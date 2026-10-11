@@ -563,7 +563,7 @@ eumetria/
 │   ├── geometry/{__init__,layout,coordinates}.py
 │   ├── basis/{__init__,zernike,legendre,cartesian,registry}.py
 │   ├── synth/{__init__,fingerprint,sampling,noise,tis,bossung}.py
-│   ├── fit/{__init__,linear_fit,cascade,model_select,crossval,diagnostics}.py
+│   ├── fit/{__init__,linear_fit,result,writers,cascade,model_select,crossval,diagnostics}.py
 │   ├── robust/{__init__,outliers,irls,lad}.py
 │   ├── decompose/{__init__,correctable,linear_terms}.py
 │   ├── correction/{__init__,constrained_qp}.py
@@ -813,6 +813,11 @@ W0001,,0,0,-107.000,-96.000,10.000,-13.500,0.9584,-2.4103,3.3124,4.4941,-2.9888,
 
 ### 6.4 fit_result.json
 
+`fit` 只写它自己产出的键（version … identifiability、field_diagnostics）；
+`linear_terms` / `correctable` / `cpe_terms` / `uncorrectable_residual_rms_nm` 由 Phase 3 的
+`decompose` 补齐 —— **缺字段而不是写 0**（用 0 冒充"已知值"比缺字段危险）。
+`field_diagnostics` 逐场给出秩与条件数，是 §3.1.1「CPE 阶数上限由最差场决定」的证据。
+
 ```json
 {
   "version": 1,
@@ -831,9 +836,15 @@ W0001,,0,0,-107.000,-96.000,10.000,-13.500,0.9584,-2.4103,3.3124,4.4941,-2.9888,
   "n_params": 13,
   "condition_number": 42.7,
   "identifiability": {
-    "max_identifiable_order": 8,
-    "warnings": ["Z9 与 Z16 在本采样布局下相关系数 0.94，建议增加点数"],
+    "max_identifiable_order": 12,
+    "cpe_order_ceiling": 1,
+    "warnings": ["以下场在 2 阶场内基下不可辨识（mark 数或秩不足）：6, 15, 60, 69 —— 逐场校正（CPE）不得使用该阶数（§3.1.1），也不许逐场降阶",
+                 "CPE 阶数上限被最差的场限制为 1 阶（配置要的是 2 阶）：全局统一降档，或在采样层解决，不逐场降阶"],
     "rank_deficient": false
+  },
+  "field_diagnostics": {
+    "6": {"n_marks": 5, "configured_order": 2, "rank": 5, "n_params": 6, "condition_number": null, "identifiable": false, "max_identifiable_order": 1},
+    "8": {"n_marks": 8, "configured_order": 2, "rank": 6, "n_params": 6, "condition_number": 6.61, "identifiable": true,  "max_identifiable_order": 2}
   },
   "crossval": {"k_folds": 5, "group_by": "wafer", "rmse_nm": 0.13},
   "linear_terms": {"Tx_nm": 0.12, "Ty_nm": -0.08, "Mag_ppm": 1.4, "Rot_urad": 0.6, "NonOrth_urad": 0.2},
@@ -992,19 +1003,26 @@ def bossung(dose_mj: Arr, focus_nm: Arr, params: BossungParams) -> Arr: ...
 @dataclass(frozen=True)
 class FitConfig:
     basis: str = "zernike"
-    max_order: int = 10
-    selection: str = "aic"          # aic | fixed | none
+    max_order: int = 12
+    selection: str = "none"         # none | fixed；aic 属 Phase 2（Q-02）
     fixed_terms: list[str] | None = None
     field_order: int = 2
-    crossval_folds: int = 5
-    crossval_group_by: str = "wafer"
+
+def field_terms_for(order: int) -> list[str]:
+    """场内项集：order 阶幂基，**去掉常数项 (0,0)**（D-09）。"""
+
+def build_design(measurements: MeasurementSet,
+                 config: FitConfig) -> tuple[Arr, list[str], list[str]]:
+    """返回 (X, wafer_terms, field_terms)；X = [Z(ρ,θ) | C(ξ,η)] 按列拼接。"""
 
 def fit_field(measurements: MeasurementSet,
-              layout: list[Field],
               config: FitConfig) -> FitResult:
     """两级模型，**一次联合求解**（D-09）：
        X = [Z(ρ,θ) | C(ξ,η)]，np.linalg.lstsq(X, y, rcond=None)，再按基块切开系数
        分别报告 wafer_coeffs_* / field_coeffs_*。
+
+       **签名里没有 layout**：`MeasurementSet` 自带场中心、场尺寸与场内坐标，且 (ρ,θ)
+       在读取时已重算校验过；再传一份 layout 只会多一个能和它矛盾的信息源。
 
        **不要用「先场内、再用残差拟合全片」的一次扫描顺序解**（初版 §7.4 的规定，已被实验
        推翻）：两块基在同一批采样点上不正交（列中心化后最大 |cos| = 0.173），顺序解有偏，
@@ -1494,7 +1512,8 @@ class LithographySimBackend(Protocol):
       （默认场景复现 25 field / 188 点 / 4 个边缘场各剩 5 mark）
 - [x] `io.schemas` + 读写（pydantic `extra='forbid'`；§6.2.5 四条强制校验；浮点写 `repr` 精确往返；
       version 在进 pydantic 之前检查，否则 `SchemaVersionError` 会被包成 `ValidationError`）
-- [ ] `fit.fit_field` **联合求解**（`X=[Z|C]` 一次 lstsq 后按块切开，D-09）+ `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
+- [x] `fit.fit_field` **联合求解**（`X=[Z|C]` 一次 lstsq 后按块切开，D-09）+ `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
+      + 条件数/相关系数警告 + 逐场秩诊断与 `cpe_order_ceiling`（§3.1.1 的落地）
 - [ ] `metrics.coefficient_recovery` + `residual_rms`
 - [ ] `cli synth|fit|score` + 集成测试（A-01..A-05）
 - [ ] `report` 基础图
