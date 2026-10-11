@@ -376,6 +376,11 @@ true_hat = (m_0 - m_180) / 2
 
 合成器要**同时输出两次测量**（列 `dx_nm_0/dy_nm_0` 与 `dx_nm_180/dy_nm_180`），拟合器默认做该组合。未校准模式由配置开关控制（用于 Q-07 实验）。
 
+**组合的副产品：噪声降到 σ/√2。** `(m_0 − m_180)/2 = true + (ε_0 − ε_180)/2`，方差
+`(σ² + σ²)/4 = σ²/2`。所以 TIS 校准后的**等效 TMU 是 σ_tmu/√2**（默认 0.1nm → 0.0707nm）——
+「每个 mark 测两次」的收益不只是消掉 TIS，还把量测精度提了 √2。写验收阈值（A-03）时要按
+0.0707nm 算，不是 0.1nm。
+
 ### 3.5 真实量级参数表（合成器的标尺）
 
 以下数值来自公开文献与厂商资料，作为 `synth` 默认值，**不得随意改动**（改则失去真实性锚点）：
@@ -535,6 +540,9 @@ eumetria/
 
 所有文件格式在此固定。实现时用 pydantic 模型校验，读写失败必须报错而非静默补默认值。
 
+内存表示是 `io.schemas.MeasurementSet`（numpy 数组 + 元数据的 dataclass），**不引入 pandas**：
+188 行的表用不上 DataFrame，且 P-02 要求依赖最小。
+
 ### 6.1 scenario.yaml
 
 ```yaml
@@ -607,7 +615,7 @@ cdu:
 | `dy_nm` | float | nm | 最终使用的 Y | 不允许 |
 | `dz_nm` | float | nm | focus 测量值（标量场场景） | 允许 |
 | `cd_nm` | float | nm | CD 测量值（CDU 场景） | 允许 |
-| `is_edge` | bool | — | 是否落在 edge exclusion 内 | 不允许 |
+| `is_edge` | bool | — | **该点所属 field 是边缘场**（场内有 mark 落进排除区）| 不允许 |
 
 **强约束：** `dx_nm` 与 `dy_nm` 之外的所有量都是"测量者可知"的；`xf_mm/yf_mm/rho/theta_rad` 由 `io.readers` 在载入时**重新计算并校验**（不允许信任文件里的值，防止真值泄漏）。
 
@@ -648,7 +656,7 @@ Zernike 多项式**只定义在单位圆上**，所以必须先归一化：
 
 | 层 | 形状 | 说明 |
 |---|---|---|
-| 文件（表） | (n_points, 18) | 一行 = 一个 field 内一个 mark 的一次测量 |
+| 文件（表） | (n_points, 19) | 一行 = 一个 field 内一个 mark 的一次测量 |
 | 数值 | (n_points, 2) | 每点 2 通道 (dx, dy)；focus/CD 场景为 1 通道 |
 | 拟合 | y: (2·n_points,)；X: (n_points, n_terms) | 见 §9.3 |
 
@@ -663,21 +671,23 @@ Zernike 多项式**只定义在单位圆上**，所以必须先归一化：
 
 参数余量（默认）：188 点 vs 12 阶 wafer（2×12 = 24 项）+ field 2 阶（2×6 = 12 项）= 36 未知量 → 余量 5.2 倍。
 
-#### 6.2.3 实测样例
+#### 6.2.3 实测样例（seed 20261003，默认场景，由当前实现生成）
 
-seed 20261003，默认场景。前 8 行：
+`field_id` 沿用 `build_layout` 的编号、不重编号，所以从 6 开始而不是 0。前 8 行：
 
-    pt fid     x_mm     y_mm  xf_mm  yf_mm     rho    theta  dx_nm_0   dx_nm   dy_nm
-     0   0 -107.000  -96.000  10.00 -13.50  0.9584  -2.4103    3.312   3.151   4.306
-     1   0 -127.000  -69.000 -10.00  13.50  0.9636  -2.6439    1.037   0.764   4.859
-     2   0 -107.000  -69.000  10.00  13.50  0.8488  -2.5688    4.481   4.273   1.517
-     3   0 -117.000  -69.000   0.00  13.50  0.9055  -2.6087    2.896   2.624   3.115
-     4   0 -107.000  -82.500  10.00   0.00  0.9007  -2.4848    4.212   4.021   2.417
-     5   1 -127.000   69.000 -10.00 -13.50  0.9636   2.6439    2.362   2.188   2.164
-     6   1 -107.000   69.000  10.00 -13.50  0.8488   2.5688    5.958   5.766   0.904
-     7   1 -107.000   96.000  10.00  13.50  0.9584   2.4103    1.985   1.770   0.764
+    pt fid     x_mm     y_mm  xf_mm  yf_mm     rho    theta
+     0   6 -127.000   -69.000 -10.00  13.50  0.9636  -2.6439
+     1   6 -107.000   -96.000  10.00 -13.50  0.9584  -2.4103
+     2   6 -107.000   -69.000  10.00  13.50  0.8488  -2.5688
+     3   6 -107.000   -82.500  10.00   0.00  0.9007  -2.4848
+     4   6 -117.000   -69.000   0.00  13.50  0.9055  -2.6087
+     5   8   -75.000   -96.000 -10.00 -13.50  0.8122  -2.2340
+     6   8   -75.000   -69.000 -10.00  13.50  0.6794  -2.3978
+     7   8   -55.000   -96.000  10.00 -13.50  0.7376  -2.0911
 
-（前 4 行同属 field 0，是该场可用 mark；第 5 行起进入 field 1 —— 一行就是一个 mark 的一次测量）
+field 6 的中心是 (-117, -82.5)：8 个候选 mark 有 3 个落进边缘排除区（ρ > 0.98），
+只剩 5 个可用，所以前 5 行都属于它 —— **一行就是一个 mark 的一次测量，不是一场一行**。
+（本版样例的行序由 mark 枚举顺序决定，与旧版本文档的样例顺序不同，ρ/θ 逐点一致。）
 
 完整一行的 18 列（point_id = 0）：
 
@@ -885,8 +895,13 @@ class LegendreBasis:
 ### 7.3 synth
 
 ```python
-def make_fingerprint(layout: list[Field],
-                     marks_per_field: int,
+def sample_points(fields: list[Field], marks_per_field: int,
+                  wafer_radius_mm: float, edge_exclusion_mm: float) -> SamplePoints:
+    """把抽中的 field 展开成 mark 点表，并按 edge exclusion 过滤（ρ ≤ 0.98）。
+       返回的 SamplePoints 是 measurements.csv 的唯一来源：field_id、点号、全场/场内
+       坐标、ρ、θ 一次算清 —— 否则采样逻辑会有两份实现，迟早漂移。"""
+
+def make_fingerprint(points: SamplePoints,
                      basis: Basis,
                      wafer_terms_x: dict[str, float],
                      wafer_terms_y: dict[str, float],
@@ -896,8 +911,14 @@ def make_fingerprint(layout: list[Field],
     """返回未加噪的真实 (dx, dy)，形状 (n_points, 2)，单位 nm。"""
 
 def sample_fields(layout: list[Field], n_fields: int, mode: str,
-                  rng: np.random.Generator) -> list[Field]:
-    """mode ∈ {regular, random, stratified}。regular = 按固定步长等距抽取。"""
+                  rng: np.random.Generator, blocks: int = 5) -> list[Field]:
+    """mode ∈ {regular, random, stratified}，抽 n_fields 个 field。
+       regular    = 在 field 中心的包围盒上做 5×5 空间分块，每块取距块心最近者（确定性）
+       stratified = 同样分块，每块在块内随机取一个（由 rng 决定）
+       random     = 全局无放回随机
+       **不是「按列表索引等距抽取」** —— layout 是网格遍历序（先 y 后 x），等距索引
+       会把抽到的点全赶到某一条带上（实测 25 点等距抽出的 ρ 全部 > 0.75），
+       完全失去空间代表性。见 §6.2.4 第 2 步。"""
 
 def add_noise(true: Arr, sigma_nm: float, rng: np.random.Generator) -> Arr: ...
 
@@ -922,7 +943,7 @@ class FitConfig:
     crossval_folds: int = 5
     crossval_group_by: str = "wafer"
 
-def fit_field(measurements: pd.DataFrame,
+def fit_field(measurements: MeasurementSet,
               layout: list[Field],
               config: FitConfig) -> FitResult:
     """两级最小二乘：
@@ -1399,8 +1420,9 @@ class LithographySimBackend(Protocol):
 - [x] `basis.ZernikeBasis` + 正交性测试 + zernpy 对照（j=1..36 最大偏差 4.4e-16）
 - [x] `basis` 设计矩阵 → 最小二乘能恢复已知系数（**第一个真正的里程碑**：96 点 / 12 项，相对误差 6.0e-13，条件数 2.3）
 - [x] `geometry.build_layout` + `field_marks`（默认场景 76 field 口径B / 64 口径A；已实现 4 点与 8 点，19 点见 U-10）
-- [ ] `synth.make_fingerprint` 端到端：layout → 指纹
-- [ ] `synth.sampling` + `add_noise` + `apply_tis`
+- [x] `synth.make_fingerprint` 端到端：layout → 指纹（入参改为 `SamplePoints`，见 §7.3）
+- [x] `synth.sample_fields` / `sample_points` + `add_noise` + `apply_tis`
+      （默认场景复现 25 field / 188 点 / 4 个边缘场各剩 5 mark）
 - [ ] `io.schemas` + 读写（pydantic 校验）
 - [ ] `fit.fit_field` 两级拟合 + `InsufficientPointsError`
 - [ ] `metrics.coefficient_recovery` + `residual_rms`
