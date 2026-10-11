@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from html import escape
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 _STYLE = """
 body { font-family: -apple-system, "Segoe UI", "Noto Sans CJK SC", sans-serif;

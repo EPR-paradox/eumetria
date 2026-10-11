@@ -9,8 +9,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, TypeAlias
+from typing import Any, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
@@ -20,6 +21,13 @@ from ..io.schemas import MeasurementSet
 
 Arr: TypeAlias = NDArray[np.float64]
 
+
+# 色标。彩虹（rainbow）系列里 turbo 是 matplotlib 官方给 jet 的替代品 —— 一样是彩虹观感，
+# 但亮度沿色标单调，读数不会在中段出现"假的峰"。想换回老派 jet，改这一个词即可。
+CMAP = "turbo"
+# 残差是双极量（有正有负），严格说该用 coolwarm 这类发散色标：彩虹图会把 0 附近画得
+# "看起来有结构"，而那里其实只是噪声。这里按统一观感优先用彩虹；要判读残差结构就换回 "coolwarm"。
+CMAP_RESIDUAL = CMAP
 
 _CJK_PREFERENCE = (
     "Noto Sans CJK SC",
@@ -120,12 +128,12 @@ def plot_wafer_map(
     fig, ax = plt.subplots(figsize=(7.2, 7.2), dpi=140)
 
     if kind == "scalar":
-        scatter = ax.scatter(x_mm, y_mm, c=np.asarray(values), s=26, cmap="coolwarm", zorder=3)
+        scatter = ax.scatter(x_mm, y_mm, c=np.asarray(values), s=26, cmap=CMAP, zorder=3)
         fig.colorbar(scatter, ax=ax, label=label, shrink=0.8)
     elif kind == "quiver":
         if dx is None or dy is None:
             raise ValueError("kind='quiver' 需要同时给 dx 与 dy")
-        ax.quiver(x_mm, y_mm, dx, dy, np.hypot(dx, dy), cmap="coolwarm", scale=200, zorder=3)
+        ax.quiver(x_mm, y_mm, dx, dy, np.hypot(dx, dy), cmap=CMAP, scale=200, zorder=3)
     else:
         raise ValueError(f"未知的 kind={kind!r}，只支持 'scalar' / 'quiver'")
 
@@ -154,9 +162,9 @@ def plot_residual_map(
     plt = _plt()
     limit = float(max(np.abs(resid_x).max(), np.abs(resid_y).max()))
     fig, axes = plt.subplots(1, 2, figsize=(13.6, 6.6), dpi=140)
-    for ax, resid, name in zip(axes, (resid_x, resid_y), ("X", "Y")):
+    for ax, resid, name in zip(axes, (resid_x, resid_y), ("X", "Y"), strict=True):
         scatter = ax.scatter(
-            x_mm, y_mm, c=np.asarray(resid), s=26, cmap="coolwarm",
+            x_mm, y_mm, c=np.asarray(resid), s=26, cmap=CMAP_RESIDUAL,
             vmin=-limit, vmax=limit, zorder=3,
         )
         _draw_wafer_outline(ax, radius_mm, edge_exclusion_mm)

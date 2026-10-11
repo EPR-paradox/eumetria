@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ..errors import (
     InvalidMeasurementError,
-    SchemaVersionError,
     SchemaValidationError,
+    SchemaVersionError,
 )
 from ..geometry import MARK_INSET_MM
 
@@ -62,7 +62,7 @@ class WaferSpec(_Spec):
     edge_exclusion_mm: float = 3.0
 
     @model_validator(mode="after")
-    def _check(self) -> "WaferSpec":
+    def _check(self) -> WaferSpec:
         if not np.isfinite(self.diameter_mm) or self.diameter_mm <= 0:
             raise ValueError(f"wafer.diameter_mm 必须为正的有限值，得到 {self.diameter_mm}")
         radius = self.diameter_mm / 2.0
@@ -79,7 +79,7 @@ class FieldSpec(_Spec):
     marks_per_field: int = 8
 
     @model_validator(mode="after")
-    def _check(self) -> "FieldSpec":
+    def _check(self) -> FieldSpec:
         if min(self.width_mm, self.height_mm) <= 2.0 * MARK_INSET_MM:
             raise ValueError(
                 f"field 尺寸 {self.width_mm}×{self.height_mm}mm 放不下距边 {MARK_INSET_MM}mm 的 mark"
@@ -99,7 +99,7 @@ class SamplingSpec(_Spec):
     tmu_nm: float = 0.1
 
     @model_validator(mode="after")
-    def _check(self) -> "SamplingSpec":
+    def _check(self) -> SamplingSpec:
         if self.fields < 1:
             raise ValueError(f"sampling.fields 必须 ≥ 1，得到 {self.fields}")
         if self.tmu_nm < 0 or not np.isfinite(self.tmu_nm):
@@ -114,7 +114,7 @@ class TisSpec(_Spec):
     calibrated: bool = True
 
     @model_validator(mode="after")
-    def _check(self) -> "TisSpec":
+    def _check(self) -> TisSpec:
         if self.amplitude_nm < 0 or not np.isfinite(self.amplitude_nm):
             raise ValueError(f"tis.amplitude_nm 必须是非负有限值，得到 {self.amplitude_nm}")
         return self
@@ -128,7 +128,7 @@ class FingerprintSpec(_Spec):
     field_terms: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _check(self) -> "FingerprintSpec":
+    def _check(self) -> FingerprintSpec:
         if self.max_order < 1:
             raise ValueError(f"fingerprint.max_order 必须 ≥ 1，得到 {self.max_order}")
         for term in self.terms:
@@ -296,7 +296,8 @@ class MeasurementSet:
         if len(np.unique(self.point_id)) != n:
             raise InvalidMeasurementError("point_id 必须全局唯一")
         seen: set[tuple[int, float, float]] = set()
-        for fid, xf, yf in zip(self.field_id, self.xf_mm, self.yf_mm):
+        # strict=True：三列长度不一致时宁可报错，也不静默截断把重复点放过去
+        for fid, xf, yf in zip(self.field_id, self.xf_mm, self.yf_mm, strict=True):
             key = (int(fid), round(float(xf), 9), round(float(yf), 9))
             if key in seen:
                 raise InvalidMeasurementError(

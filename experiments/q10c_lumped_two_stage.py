@@ -28,10 +28,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from eumetria.basis import CartesianBasis, ZernikeBasis  # noqa: E402
-from eumetria.geometry import build_layout, field_marks, to_polar  # noqa: E402
-from eumetria.io import load_scenario  # noqa: E402
-from eumetria.synth import sample_fields  # noqa: E402
+from eumetria.basis import CartesianBasis, ZernikeBasis
+from eumetria.geometry import build_layout, field_marks, to_polar
+from eumetria.io import load_scenario
+from eumetria.synth import sample_fields
 
 SCENARIO = ROOT / "scenarios" / "base-300mm.yaml"
 
@@ -57,7 +57,8 @@ def build_points(sc) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np
             r, t = to_polar(np.array([x]), np.array([y]), R)
             if float(r[0]) > usable_rho + 1e-12:
                 continue
-            rho.append(float(r[0])); theta.append(float(t[0]))
+            rho.append(float(r[0]))
+            theta.append(float(t[0]))
             xi.append(2 * mk.xf_mm / sc.field.width_mm)
             eta.append(2 * mk.yf_mm / sc.field.height_mm)
             fid.append(f.field_id)
@@ -112,7 +113,8 @@ def main() -> int:
     for k in fids:
         fld = by_id[k]
         r, t = to_polar(np.array([fld.cx_mm]), np.array([fld.cy_mm]), sc.wafer_radius_mm)
-        rho_c.append(float(r[0])); theta_c.append(float(t[0]))
+        rho_c.append(float(r[0]))
+        theta_c.append(float(t[0]))
     Zc = zw.values(np.array(rho_c), np.array(theta_c))
     trans = np.array([per_field[k][0] for k in fids])  # 每场的平移项（场中心上的观测）
     a_B, *_ = np.linalg.lstsq(Zc, trans, rcond=None)

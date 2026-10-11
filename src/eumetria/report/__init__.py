@@ -7,4 +7,4 @@
 from .html import render_html
 from .plots import fitted_values, plot_residual_map, plot_wafer_map
 
-__all__ = ["render_html", "fitted_values", "plot_residual_map", "plot_wafer_map"]
+__all__ = ["fitted_values", "plot_residual_map", "plot_wafer_map", "render_html"]

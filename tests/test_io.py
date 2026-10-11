@@ -11,8 +11,8 @@ from pydantic import ValidationError
 
 from eumetria.errors import (
     InvalidMeasurementError,
-    SchemaVersionError,
     SchemaValidationError,
+    SchemaVersionError,
 )
 from eumetria.io import (
     MEASUREMENT_COLUMNS,

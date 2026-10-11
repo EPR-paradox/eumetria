@@ -10,8 +10,7 @@ import pytest
 
 from eumetria.cli import EXIT_OK, main
 from eumetria.io import load_scenario
-from eumetria.report import fitted_values, plot_residual_map, plot_wafer_map, render_html
-from eumetria.synth import generate
+from eumetria.report import fitted_values, plot_wafer_map, render_html
 
 SCENARIO_PATH = Path("/home/j/myprojects/eumetria/scenarios/base-300mm.yaml")
 
@@ -61,7 +60,7 @@ def test_fitted_values_match_the_fit_result(artifacts):
 
     ms = read_measurements(scenario, artifacts / "measurements.csv")
     fit = json.loads((artifacts / "fit_result.json").read_text(encoding="utf-8"))
-    dx_fit, dy_fit = fitted_values(fit, ms)
+    dx_fit, _dy_fit = fitted_values(fit, ms)
     resid_x = ms.dx_nm - dx_fit
     assert float(np.sqrt(np.mean(resid_x**2))) == pytest.approx(fit["residual_rms_nm_x"], rel=1e-3)
     assert dx_fit.shape == ms.dx_nm.shape

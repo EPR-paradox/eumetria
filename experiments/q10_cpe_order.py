@@ -20,10 +20,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from eumetria.basis import CartesianBasis  # noqa: E402
-from eumetria.geometry import build_layout, field_marks, to_polar  # noqa: E402
-from eumetria.io import load_scenario  # noqa: E402
-from eumetria.synth import sample_fields  # noqa: E402
+from eumetria.basis import CartesianBasis
+from eumetria.geometry import build_layout, field_marks, to_polar
+from eumetria.io import load_scenario
+from eumetria.synth import sample_fields
 
 SCENARIO = ROOT / "scenarios" / "base-300mm.yaml"
 

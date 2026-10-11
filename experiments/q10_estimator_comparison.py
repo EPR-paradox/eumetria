@@ -25,11 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
-from _estimators import ALL_ESTIMATORS, Result, Setup  # noqa: E402
-from eumetria.basis import CartesianBasis, ZernikeBasis  # noqa: E402
-from eumetria.geometry import build_layout, field_marks, to_polar  # noqa: E402
-from eumetria.io import load_scenario  # noqa: E402
-from eumetria.synth import sample_fields  # noqa: E402
+from _estimators import ALL_ESTIMATORS, Result, Setup
+
+from eumetria.basis import CartesianBasis, ZernikeBasis
+from eumetria.geometry import build_layout, field_marks, to_polar
+from eumetria.io import load_scenario
+from eumetria.synth import sample_fields
 
 SCENARIO = ROOT / "scenarios" / "base-300mm.yaml"
 
@@ -54,12 +55,16 @@ def build_setup(sc, wafer_truth: dict[str, float]) -> tuple[Setup, np.ndarray, n
             r, t = to_polar(np.array([mk.x_mm]), np.array([mk.y_mm]), R)
             if float(r[0]) > usable_rho + 1e-12:
                 continue
-            rho.append(float(r[0])); theta.append(float(t[0]))
+            rho.append(float(r[0]))
+            theta.append(float(t[0]))
             xi.append(2 * mk.xf_mm / sc.field.width_mm)
             eta.append(2 * mk.yf_mm / sc.field.height_mm)
             fid.append(f.field_id)
-    rho = np.array(rho); theta = np.array(theta)
-    xi = np.array(xi); eta = np.array(eta); fid = np.array(fid, dtype=np.int64)
+    rho = np.array(rho)
+    theta = np.array(theta)
+    xi = np.array(xi)
+    eta = np.array(eta)
+    fid = np.array(fid, dtype=np.int64)
 
     zw_b = ZernikeBasis(sc.fingerprint.max_order)
     cf_b = CartesianBasis(sc.fingerprint.field_order)
@@ -78,7 +83,8 @@ def build_setup(sc, wafer_truth: dict[str, float]) -> tuple[Setup, np.ndarray, n
     rho_c, theta_c = [], []
     for k in fids:
         r, t = to_polar(np.array([by_id[k].cx_mm]), np.array([by_id[k].cy_mm]), R)
-        rho_c.append(float(r[0])); theta_c.append(float(t[0]))
+        rho_c.append(float(r[0]))
+        theta_c.append(float(t[0]))
     Zc = zw_b.values(np.array(rho_c), np.array(theta_c))
     # 全片指纹在单场内的局部梯度：∂Z_j/∂x(场中心)·(W/2)（ξ 是半宽归一化坐标）
     zdx = _grad(zw_b, cx, cy, R, sc.field.width_mm / 2, axis=0)
@@ -97,7 +103,7 @@ def _grad(zw_b: ZernikeBasis, cx, cy, R: float, scale: float, axis: int) -> np.n
     """∂Z_j/∂x（或 ∂y）在场中心的数值中心差分，再乘该方向的半宽。"""
     step = 1.0  # mm
     out = np.zeros((len(cx), len(zw_b.terms())))
-    for i, (x, y) in enumerate(zip(cx, cy)):
+    for i, (x, y) in enumerate(zip(cx, cy, strict=True)):
         opts = (np.array([x + step]), np.array([y])) if axis == 0 else (
             np.array([x]), np.array([y + step]))
         omts = (np.array([x - step]), np.array([y])) if axis == 0 else (
@@ -154,8 +160,8 @@ def stage2_diagnostics(setup: Setup) -> None:
 def main() -> int:
     sc = load_scenario(SCENARIO)
     print("# Q-10 汇总：七种估计器的效果一览\n")
-    print("配置：seed=%d，%d field × %d mark，实测 188 点；数据**无噪声**；"
-          "场内基 order=2 去常数项（D-09）\n" % (sc.seed, sc.sampling.fields, sc.field.marks_per_field))
+    print(f"配置：seed={sc.seed}，{sc.sampling.fields} field × {sc.field.marks_per_field} mark，"
+          "实测 188 点；数据**无噪声**；场内基 order=2 去常数项（D-09）\n")
 
     # T0 是对照：如果全片指纹在单个场里**精确**是线性的，聚合两级应当没有截断误差
     for label, wafer_truth in (("T0 纯低阶（全片指纹在场内精确线性）", LOW_WAFER),

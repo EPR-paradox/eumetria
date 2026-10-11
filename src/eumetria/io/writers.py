@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -28,7 +28,7 @@ def _fmt(value: float | int | bool | None) -> str:
         return "true" if value else "false"
     if isinstance(value, (int, np.integer)):
         return str(int(value))
-    if isinstance(value, float) or isinstance(value, np.floating):
+    if isinstance(value, (float, np.floating)):
         number = float(value)
         if not np.isfinite(number):
             raise SchemaValidationError(f"待写出的数值不是有限值：{value}")

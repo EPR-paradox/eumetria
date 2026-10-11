@@ -9,9 +9,9 @@ from .result import FieldDiagnostics, FitResult, IdentifiabilityInfo
 from .writers import write_fit_result
 
 __all__ = [
+    "FieldDiagnostics",
     "FitConfig",
     "FitResult",
-    "FieldDiagnostics",
     "IdentifiabilityInfo",
     "build_design",
     "field_terms_for",

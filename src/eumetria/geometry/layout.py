@@ -85,7 +85,7 @@ def build_layout(
         raise ValueError(f"field_width_mm 必须为正的有限值，得到 {field_width_mm!r}")
     if not math.isfinite(field_height_mm) or field_height_mm <= 0:
         raise ValueError(f"field_height_mm 必须为正的有限值，得到 {field_height_mm!r}")
-    if 2.0 * MARK_INSET_MM >= min(field_width_mm, field_height_mm):
+    if min(field_width_mm, field_height_mm) <= 2.0 * MARK_INSET_MM:
         raise ValueError(
             f"field 尺寸 {field_width_mm}×{field_height_mm} 小于 mark 内缩 {MARK_INSET_MM}mm 的要求"
         )

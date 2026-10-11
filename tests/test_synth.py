@@ -116,7 +116,7 @@ def test_point_table_matches_documented_golden_field():
     keep = rho <= (R_WAFER_MM - EDGE_MM) / R_WAFER_MM + 1e-12
     assert keep.sum() == 5, "文档记载该场只剩 5 个可用 mark"
 
-    got = {(round(float(x), 3), round(float(y), 3)) for x, y in zip(xs[keep], ys[keep])}
+    got = {(round(float(x), 3), round(float(y), 3)) for x, y in zip(xs[keep], ys[keep], strict=True)}
     assert got == {
         (-107.0, -96.0),
         (-127.0, -69.0),

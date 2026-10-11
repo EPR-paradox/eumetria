@@ -29,9 +29,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from eumetria.basis import CartesianBasis, ZernikeBasis  # noqa: E402
-from eumetria.io import load_scenario  # noqa: E402
-from eumetria.synth import generate  # noqa: E402
+from eumetria.basis import CartesianBasis, ZernikeBasis
+from eumetria.io import load_scenario
+from eumetria.synth import generate
 
 SCENARIO = ROOT / "scenarios" / "base-300mm.yaml"
 
@@ -161,8 +161,8 @@ def main() -> int:
     cf_no_const = CartesianBasis(sc.fingerprint.field_order)
     keep = [i for i, t in enumerate(cf_no_const.terms()) if t != "0,0"]
     Cf2 = Cf[:, keep]
-    a2, b2 = solve_joint(Zw, Cf2)
-    ew2, eb2, rms2 = score(a2, np.zeros_like(b_true), Zw, Cf)
+    a2, _b2 = solve_joint(Zw, Cf2)
+    _ew2, _eb2, _rms2 = score(a2, np.zeros_like(b_true), Zw, Cf)
     print(f"   cond = {np.linalg.cond(np.hstack([Zw, Cf2])):.1f}；"
           f"联合解 wafer 非零项误差 {float(np.max(np.abs(a2 - a_true)[np.flatnonzero(a_true)])):.4f} nm")
 

@@ -29,6 +29,16 @@
 `argparse.Namespace` 才能跑流水线。现在 `cli.py` 只剩参数解析 + 退出码映射，
 `main.py` 只剩默认值与人类可读输出。**改流水线顺序只需改一处。**
 
+第二轮收尾：
+
+- 装齐依赖：pip（uv venv 缺）+ `[plot,test,dev]` extras（matplotlib / pytest+zernpy / ruff+pytest-cov）。
+  `pyproject.toml` 新增 `dev` extra 与 `[tool.ruff]` 配置。
+- `ruff check` 从 66 条降到 0 条。其中有**真问题**：`zip()` 缺 `strict=`（数组长度不一致时
+  会静默截断，把校验绕过去）、`synth/pipeline.py` 一个写完没用的局部变量。
+  `BLE001` 加进 select，让边界处刻意写的 `# noqa` 有意义（否则被报成无用注释）。
+- 报告配色改为彩虹（turbo，jet 的感知均匀替代）；残差图沿用同一色标。
+- 覆盖率 94%（1417 行语句，79 行未覆盖）。
+
 ## 下一步（明天从这里接）
 
 **Phase 2 结论层** —— 这是项目第一次产出"我发现了什么"，而不是"我实现了什么"：
@@ -96,7 +106,11 @@
 **依赖与环境的坑（踩过的，别重复踩）**
 
 - 本机 `python3.10-venv` 未装（缺 ensurepip）→ 用 `uv venv`；装包要 unset 代理走清华镜像。
-- 包必须 `uv pip install -e .` 才有 `eumetria` 命令入口（pytest 靠 `pythonpath=src` 蒙过去了）。
+- **`uv venv` 建的 venv 不带 pip**，`.venv/bin/python -m pip` 直接报 "No module named pip"
+  （PyCharm 的包管理面板也受影响）→ 补 `uv pip install --python .venv/bin/python pip`。
+  已把 pip 写进 `[project.optional-dependencies].dev`，装 extras 时一并带上。
+- 包必须 `uv pip install -e ".[plot,test,dev]"` 才有 `eumetria` 命令入口
+  （pytest 靠 `pythonpath=src` 蒙过去了，所以漏装很久也没暴露）。
 - 环境变量 `HTTP_PROXY` 指向 Mihomo 7890，它没运行时 pip 必失败。
 - 绘图中文必须显式挑 CJK 字体，否则标题画成豆腐块且只报 warning。
 

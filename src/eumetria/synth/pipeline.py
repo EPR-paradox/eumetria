@@ -99,7 +99,6 @@ def generate(scenario: Scenario, rng: np.random.Generator | None = None) -> Gene
         tis_hat = np.zeros_like(combined)
         m0 = m180 = None
 
-    n = len(points)
     measurements = MeasurementSet(
         wafer_id=scenario.wafer_id,
         lot_id=scenario.lot_id,

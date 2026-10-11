@@ -28,7 +28,7 @@ Noll 与 ANSI 的错位正是从 j=9 开始的：Noll 的球差是 j=11，ANSI/F
 from __future__ import annotations
 
 import math
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -50,10 +50,7 @@ def _shell_orders(n: int) -> list[int]:
     n 为偶数时 |m| 取 0,2,4,...,n；n 为奇数时取 1,3,5,...,n。
     """
     s = -1 if (n // 2) % 2 else 1
-    if n % 2 == 0:
-        abs_ms = [0] + list(range(2, n + 1, 2))
-    else:
-        abs_ms = list(range(1, n + 1, 2))
+    abs_ms = [0, *range(2, n + 1, 2)] if n % 2 == 0 else list(range(1, n + 1, 2))
 
     out: list[int] = []
     for m_abs in abs_ms:

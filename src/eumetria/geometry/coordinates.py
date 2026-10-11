@@ -7,12 +7,10 @@
 
 from __future__ import annotations
 
-from typing import Union
-
 import numpy as np
 from numpy.typing import NDArray
 
-ArrLike = Union[float, NDArray[np.float64], list, tuple]
+ArrLike = float | NDArray[np.float64] | list | tuple
 
 
 def to_polar(

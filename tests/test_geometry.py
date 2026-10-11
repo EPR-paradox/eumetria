@@ -37,7 +37,7 @@ def test_to_polar_normalization_uses_wafer_radius():
 
 
 def test_to_polar_theta_is_half_open_at_pi():
-    rho, theta = to_polar([-1.0, 0.0, -1.0], [0.0, 1.0, -1e-300], R_WAFER_MM)
+    _rho, theta = to_polar([-1.0, 0.0, -1.0], [0.0, 1.0, -1e-300], R_WAFER_MM)
     assert theta[0] == pytest.approx(-math.pi)  # 负实轴 → -π，不是 +π
     assert theta[1] == pytest.approx(math.pi / 2)
     assert theta[2] == pytest.approx(-math.pi)

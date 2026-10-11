@@ -7,9 +7,9 @@ from .zernike import NollConventionError, ZernikeBasis, noll_count, noll_terms, 
 __all__ = [
     "Basis",
     "CartesianBasis",
-    "ZernikeBasis",
     "NollConventionError",
-    "noll_to_nm",
-    "noll_terms",
+    "ZernikeBasis",
     "noll_count",
+    "noll_terms",
+    "noll_to_nm",
 ]
