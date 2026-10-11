@@ -28,5 +28,5 @@ class Basis(Protocol):
     def terms(self) -> list[str]: ...
 
     def values(
-        self, *coords: Any, terms: list[str] | None = None
+        self, coord1: Any, coord2: Any, terms: list[str] | None = None
     ) -> NDArray[np.float64]: ...

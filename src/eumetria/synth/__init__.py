@@ -5,10 +5,13 @@
 
 from .fingerprint import SamplePoints, make_fingerprint, sample_fields, sample_points
 from .noise import add_noise
+from .pipeline import GeneratedRun, generate
 from .tis import apply_tis, combine_tis, tis_vector_from_polar
 
 __all__ = [
     "SamplePoints",
+    "GeneratedRun",
+    "generate",
     "make_fingerprint",
     "sample_fields",
     "sample_points",

@@ -1,0 +1,55 @@
+version: 1
+seed: 20261003
+wafer_id: W0001
+lot_id: null
+
+wafer:
+  diameter_mm: 300
+  edge_exclusion_mm: 3.0
+
+field:
+  width_mm: 26.0
+  height_mm: 33.0
+  marks_per_field: 8
+
+sampling:
+  mode: static
+  fields: 25
+  selection: regular
+  tmu_nm: 0.1
+
+tis:
+  enabled: true
+  amplitude_nm: 0.3
+  angle_deg: 30.0
+  calibrated: true
+
+fingerprint:
+  basis: zernike
+  max_order: 12
+  terms:
+    Z4:  2.5
+    Z5: -1.8
+    Z6:  1.1
+    Z7:  0.9
+    Z11: -2.2
+  field_order: 2
+  field_terms:
+    "1,0": 1.2
+    "0,1": -0.8
+    "2,0": 0.5
+
+focus:
+  enabled: false
+  terms: {}
+
+cdu:
+  enabled: false
+  bossung:
+    cd0_nm: 32.0
+    dose0_mj: 20.0
+    focus0_nm: 0.0
+    k_dose: 0.8
+    k_focus: -0.05
+  dose_terms: {}
+  lwr_nm: 1.2

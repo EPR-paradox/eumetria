@@ -582,6 +582,8 @@ eumetria/
 ```yaml
 version: 1
 seed: 20261003
+wafer_id: W0001            # 补充字段：measurements.csv 需要它
+lot_id: null               # 补充字段：允许为空（单片）
 wafer:
   diameter_mm: 300
   edge_exclusion_mm: 3.0
@@ -623,7 +625,12 @@ cdu:
   lwr_nm: 1.2
 ```
 
-约束：`terms` 的键必须是合法 Noll 索引（`Z<n>`，n ≥ 1）；`max_order` 必须 ≥ 最大指定项；`sampling.fields` ≤ 可用 field 数；`marks_per_field` ∈ {4, 8, 19}。
+约束：`terms` 的键必须是合法 Noll 索引（`Z<n>`，n ≥ 1）；`max_order` 必须 ≥ 最大指定项；
+`sampling.fields` ≤ 可用 field 数；`marks_per_field` ∈ {4, 8}（19 点见 U-10，尚未实现）。
+
+`wafer_id` / `lot_id` 是相对初版的补充字段：CSV 的这两列按 §6.2 必须有值（lot 允许空），
+而 scenario 是唯一的输入，所以它们必须来自 scenario。schema 用 `extra="forbid"`，
+拼错的键会报错而不是被忽略。
 
 ### 6.2 measurements.csv
 
@@ -706,6 +713,9 @@ Zernike 多项式**只定义在单位圆上**，所以必须先归一化：
 参数余量（默认）：188 点 vs 12 阶 wafer（2×12 = 24 项）+ field 2 阶（2×6 = 12 项）= 36 未知量 → 余量 5.2 倍。
 
 #### 6.2.3 实测样例（seed 20261003，默认场景，由当前实现生成）
+
+**文件里的浮点写全精度**（`repr(float)`，保证精确往返），下面表格里的 4 位小数只是显示 ——
+文件要是只写 4 位，`readers` 的 §6.2.5 第 1 条重算校验（容差 1e-9）必然失败。
 
 `field_id` 沿用 `build_layout` 的编号、不重编号，所以从 6 开始而不是 0。前 8 行：
 
@@ -1457,7 +1467,8 @@ class LithographySimBackend(Protocol):
 - [x] `synth.make_fingerprint` 端到端：layout → 指纹（入参改为 `SamplePoints`，见 §7.3）
 - [x] `synth.sample_fields` / `sample_points` + `add_noise` + `apply_tis`
       （默认场景复现 25 field / 188 点 / 4 个边缘场各剩 5 mark）
-- [ ] `io.schemas` + 读写（pydantic 校验）
+- [x] `io.schemas` + 读写（pydantic `extra='forbid'`；§6.2.5 四条强制校验；浮点写 `repr` 精确往返；
+      version 在进 pydantic 之前检查，否则 `SchemaVersionError` 会被包成 `ValidationError`）
 - [ ] `fit.fit_field` 两级拟合 + `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
 - [ ] `metrics.coefficient_recovery` + `residual_rms`
 - [ ] `cli synth|fit|score` + 集成测试（A-01..A-05）
