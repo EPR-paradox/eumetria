@@ -1193,7 +1193,8 @@ def optimize_correction(coeffs: dict[str, float],
 ```
 eumetria synth   -c scenarios/base-300mm.yaml -o out/base
 eumetria fit     -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
-eumetria score   --fit out/base/fit_result.json --truth out/base/truth.json -o out/base
+eumetria score   --fit out/base/fit_result.json --truth out/base/truth.json \
+                 -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
 eumetria report  -i out/base -o out/base/report
 eumetria run     -c scenarios/base-300mm.yaml -o out/base      # 上述四步串联
 eumetria sweep   -c scenarios/base-300mm.yaml --sweep points=20,40,80,160,320
@@ -1206,6 +1207,10 @@ eumetria sample-plan -c scenarios/base-300mm.yaml --terms 16 --sequential --budg
 
 约定：
 - 退出码：0 成功；1 输入/schema 错误；2 计算错误（如点数不足）；3 内部错误
+- **`score` 相对初版增加了 `-i/--input` 与 `-c/--config`**：A-04（拟合残差与真值残差之差
+  < 0.01nm）必须重建真值场才能判定，而它需要点坐标（measurements）与读 CSV 时的硅片半径
+  （scenario，§6.2.5 强制）。原契约只给 fit/truth 两个路径，A-04 无从计算。
+- `run` 的四步共用同一个 `-o` 目录，`-i/--fit/--truth` 由它按固定文件名推出，不必重复输入
 - `--seed` 可覆盖 scenario 中的 seed
 - 所有命令支持 `--json` 输出机器可读摘要到 stdout
 - 日志走 stderr，不污染 stdout
@@ -1514,8 +1519,10 @@ class LithographySimBackend(Protocol):
       version 在进 pydantic 之前检查，否则 `SchemaVersionError` 会被包成 `ValidationError`）
 - [x] `fit.fit_field` **联合求解**（`X=[Z|C]` 一次 lstsq 后按块切开，D-09）+ `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
       + 条件数/相关系数警告 + 逐场秩诊断与 `cpe_order_ceiling`（§3.1.1 的落地）
-- [ ] `metrics.coefficient_recovery` + `residual_rms`
-- [ ] `cli synth|fit|score` + 集成测试（A-01..A-05）
+- [x] `metrics.coefficient_recovery` + `residual_rms` + A-02/A-03 判定（A-02 要判自己的前提：
+      `truth.noise_sigma_nm == 0`，否则带噪数据可能被 1% 阈值蒙过）
+- [x] `cli synth|fit|score|run` + 退出码映射 + `--json`（stdout 干净 / 日志走 stderr）
+      + 集成测试（A-01..A-05 逐条断言）
 - [ ] `report` 基础图
 - [ ] → Phase 1 完成，写 README
 - [ ] `model_select` + `crossval` + `sweep` + `sampling_budget_curve`（Q-01/02/03/05）

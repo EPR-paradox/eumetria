@@ -8,20 +8,27 @@
 
 ## 当前状态
 
-**Phase 1 进行中。** 已完成实现顺序检查表的前 3 步：
+**Phase 1 闭环（`run` 一条命令跑通 synth → fit → score）。**
 
 | 模块 | 状态 |
 |---|---|
-| `geometry.coordinates`（`to_polar` / `normalize_field`） | 已实现 |
-| `geometry.layout`（`build_layout` / `field_marks`） | 已实现，4 点与 8 点密度（19 点待定，见详设 U-10） |
-| `basis.ZernikeBasis`（Noll 索引，单位方差归一化） | 已实现；第一个里程碑：设计矩阵最小二乘可恢复已知系数 |
-| `synth` / `fit` / `metrics` / `cli` / `report` | 未开始 |
+| `geometry.coordinates` / `geometry.layout` | 已实现（76 口径B / 64 口径A；4 点与 8 点 mark） |
+| `basis.ZernikeBasis` / `CartesianBasis` | 已实现（Noll 索引；场内基不含常数项，D-09） |
+| `synth`（采样 / 指纹 / TIS / 噪声 / 流水线） | 已实现（默认场景 188 点，同 seed bit 级可复现） |
+| `io`（scenario / measurements / truth 读写） | 已实现（§6.2.5 四条强制校验） |
+| `fit`（联合最小二乘 + 可辨识性诊断） | 已实现（A-03/A-04 通过；CPE 阶数上限有告警） |
+| `metrics`（系数恢复 / 残差一致性） | 已实现（唯一读 truth.json 的模块） |
+| `cli`（`synth` / `fit` / `score` / `run`） | 已实现（退出码 0/1/2/3，`--json` 走 stdout） |
+| `report`（图 + HTML） | 未开始（Phase 4） |
 
-79 个测试全绿，其中包含与 `zernpy` 的数值对照（j=1..36 最大偏差 4.4e-16）与单位圆正交性
-（j≤28 的 406 个内积最大偏离 3.3e-14）。
+148 个测试全绿。默认场景实测：188 点 / 17 参数 / 条件数 7.60 / 残差 RMS 0.0646nm；
+A-03（前 6 阶主项 < 10%）通过，A-04（残差一致性 < 0.01nm）通过。
 
 - 详细设计：[`docs/software-design-v0.1.md`](docs/software-design-v0.1.md)（Draft v0.2）
   - 验收条件 A-01..A-11、技术问题 Q-01..Q-10、交付切片 Phase 1..4、实现顺序检查表
+- 实验记录：[`docs/experiments.md`](docs/experiments.md) —— **数字的唯一出处**，
+  每节的表格都由 `experiments/` 下的脚本产出
+- 设计问答：[`docs/design-faq.md`](docs/design-faq.md) —— 为什么这么选、证据在哪、边界在哪
 
 ## 开发
 
@@ -30,9 +37,16 @@
 uv venv --python /usr/bin/python3.10 .venv
 uv pip install --python .venv/bin/python -i https://pypi.tuna.tsinghua.edu.cn/simple \
     numpy scipy pyyaml pydantic matplotlib pytest zernpy
+uv pip install --python .venv/bin/python -e .     # 装出 eumetria 命令入口
+
+# 跑整条流水线（synth → fit → score），产物在 out/base/
+.venv/bin/eumetria run -c scenarios/base-300mm.yaml -o out/base
 
 # 测试
 .venv/bin/python -m pytest
+
+# 复现实验（docs/experiments.md 里的数字都出自这些脚本）
+.venv/bin/python experiments/q10_estimator_comparison.py
 ```
 
 ## 非目标
