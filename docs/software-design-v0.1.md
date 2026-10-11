@@ -14,6 +14,9 @@
 > §3.4 补 TIS 组合的 σ/√2 结论、§6.2 列数 18→19 与 is_edge 语义按实现修订
 > 同日续：据实测补 §3.1.1「CPE 阶数上限由最差场决定」（默认方案只支持一阶 CPE）+ 三条例律，
 > 新增 U-11（边缘场 mark 是否自适应布置），Q-10 加边缘场三臂对照
+> 同日续：**框架内决策反转 D-09** —— 实测推翻「两级顺序解」（顺序解偏 0.032–0.358nm，联合解 0.0000nm），
+> 同时查出 Zernike Z1 与场内 Cartesian (0,0) 混叠（条件数 3.3e15 → 去掉场内常数项后 7.6）；
+> 新增 docs/experiments.md（实验记录）与 docs/design-faq.md（设计问答），experiments/ 放可复现脚本
 > 目标读者：实现者本人（+ 协作助手）
 > 前置调研：SPIE 9778 / 9424（Zernike-Legendre overlay 建模）、SPIE 848200（YieldStar 量测原理）、
 > MDPI 9(1)1（采样策略综述）、JM3 24(2025)024201（EUVlitho）、arXiv 2505.07576（SEM VAD 基准）
@@ -22,7 +25,7 @@
 
 ## 0. 约定与决策状态
 
-### 0.1 已确认决策（D = Decision，用户明确表达）
+### 0.1 已确认决策（D = Decision；含用户明确表达与用户批准的助手提案，反转项标注证据）
 
 | 编号 | 决策 | 说明 |
 |---|---|---|
@@ -34,6 +37,7 @@
 | D-06 | 定位：KLA/ASML 量测算法岗面试作品 + Python 数值计算练手 | 判断标准是"能否讲深"，不是功能多 |
 | D-07 | **主线是 overlay**：overlay 做全链路，focus 用同一框架跑通即止，CDU 只做反演一条 | 深度集中在量测侧最核心、公式最厚的指标上；三线平权 = 三线都浅 |
 | D-08 | **不引入 C++/native 层**；难度轴走统计推断（FIM/CRB + 最优采样设计） | 纯 Python 可达；工程能力由 Voxora/kairos 承担，本项目只负责算法深度 |
+| D-09 | 两级拟合用**联合求解**（`X=[Z\|C]` 一次 lstsq，再按基块切开系数）；场内基不含常数项 | **决策反转**：初版 §7.4 的「先场内后全片、顺序不可颠倒」被实验推翻 —— 顺序解有偏 0.032–0.358nm，联合解 0.0000nm。证据：`experiments/q10_fit_order.py`、`docs/experiments.md` → Q-10a |
 
 ### 0.2 本版默认（P = Proposal，可改，不阻塞开工）
 
@@ -206,11 +210,17 @@ dy_wafer = Σ_j  a_j^Zy · Z_j(ρ, θ)
 
 ```
 ξ = xf / (W/2) ,  η = yf / (H/2)         ∈ [-1, 1]
-dx_field = Σ_{p,q}  b_{pq}^x · ξ^p η^q      (p + q ≤ order_f)
+dx_field = Σ_{p,q}  b_{pq}^x · ξ^p η^q      (1 ≤ p + q ≤ order_f，**不含常数项 (0,0)**)
 dy_field = 同理
 ```
 
 理由：field 是矩形，Legendre 在该域正交。本期默认用 Cartesian 幂基（行业惯用、便于与扫描机系数对话），Legendre 作为可选基（U-07）。
+
+**场内基必须去掉常数项 (0,0)。** 它与 wafer-level 的 Z1（piston，恒等于 1）是**完全相同的列**，
+两者物理上不可区分（"全片整体平移" ≡ "每个场都有同样大小的常量偏移"）；常量归 wafer-level 的
+Tx = Z1（§3.1.1 的线性 6 参数表里就是这么写的）。实测：保留常数项时联合设计矩阵条件数
+**3.3e15**（降秩），去掉后 **7.6**，而解不变。两个基单独看条件数都很正常（Zw 4.7 / Cf 6.6），
+叠起来才炸 —— 所以"每个基单独没问题"推不出"合起来没问题"。证据：`docs/experiments.md` → Q-10a。
 
 **线性 6 参数（wafer-level 的低阶特例，须能单独取出）：**
 
@@ -540,7 +550,9 @@ eumetria/
 ├── docs/
 │   ├── software-design-v0.1.md    # 本文档
 │   ├── physics-notes.md           # 公式推导与文献摘录（实现依据）
-│   └── experiments.md             # Q-01..Q-07 的实验记录与结论
+│   ├── experiments.md             # Q-01..Q-10 的实验记录与结论（**数字的唯一出处**）
+│   └── design-faq.md              # 设计问答：为什么这么选、证据在哪、边界在哪
+├── experiments/                   # 可复现的实验脚本（experiments.md 里的数字由它们产出）
 ├── scenarios/
 │   ├── base-300mm.yaml            # 默认场景
 │   ├── sparse-sampling.yaml       # 稀疏采样（Q-03）
@@ -990,11 +1002,24 @@ class FitConfig:
 def fit_field(measurements: MeasurementSet,
               layout: list[Field],
               config: FitConfig) -> FitResult:
-    """两级最小二乘：
-       1) 先拟合 field-level（同场内所有点的均值场）——使用场内坐标
-       2) 用 (测量值 − field 预测) 拟合 wafer-level ——使用 (rho, theta)
-       顺序不可颠倒；实现用 np.linalg.lstsq（rcond=None），并记录条件数。
-       点数 < 参数数时抛 InsufficientPointsError（含所需最小点数）。"""
+    """两级模型，**一次联合求解**（D-09）：
+       X = [Z(ρ,θ) | C(ξ,η)]，np.linalg.lstsq(X, y, rcond=None)，再按基块切开系数
+       分别报告 wafer_coeffs_* / field_coeffs_*。
+
+       **不要用「先场内、再用残差拟合全片」的一次扫描顺序解**（初版 §7.4 的规定，已被实验
+       推翻）：两块基在同一批采样点上不正交（列中心化后最大 |cos| = 0.173），顺序解有偏，
+       且偏差方向取决于先后。同一份无噪声数据（seed 20261003，188 点）实测：
+
+           联合求解 / backfitting 迭代到收敛    wafer 非零项误差 0.0000 nm，残差 RMS 0.0000
+           先场内后全片（一次扫描）             0.0316 nm / 0.1270 nm
+           先全片后场内（一次扫描）             0.3579 nm / 0.2470 nm
+           逐场各自拟合二阶后再拟合全片          2.6985 nm / 3.8153 nm   ← 灾难，见 Q-10 反面对照
+
+       分层是可解释性的需求（wafer 系数给 APC、场内系数给 i-HOPC/CPE），不是估计器的限制：
+       切开系数向量就能分层。若坚持交替结构，必须迭代到收敛（线性模型下与联合解等价）。
+
+       记录条件数；点数 < 参数数或降秩时抛 InsufficientPointsError（显式检查，见 §3.1.1）。
+       证据与复现：experiments/q10_fit_order.py、docs/experiments.md → Q-10a。"""
 
 def select_terms(X: Arr, y: Arr, max_order: int, method: str) -> list[str]:
     """method='aic' 时做前向逐步回归，AIC 准则；'none' 返回全部项。"""
@@ -1469,7 +1494,7 @@ class LithographySimBackend(Protocol):
       （默认场景复现 25 field / 188 点 / 4 个边缘场各剩 5 mark）
 - [x] `io.schemas` + 读写（pydantic `extra='forbid'`；§6.2.5 四条强制校验；浮点写 `repr` 精确往返；
       version 在进 pydantic 之前检查，否则 `SchemaVersionError` 会被包成 `ValidationError`）
-- [ ] `fit.fit_field` 两级拟合 + `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
+- [ ] `fit.fit_field` **联合求解**（`X=[Z|C]` 一次 lstsq 后按块切开，D-09）+ `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
 - [ ] `metrics.coefficient_recovery` + `residual_rms`
 - [ ] `cli synth|fit|score` + 集成测试（A-01..A-05）
 - [ ] `report` 基础图
