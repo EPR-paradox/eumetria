@@ -8,6 +8,8 @@
 > 新增 Q-08、A-09/A-10、Phase 2.5（FIM/CRB + D-optimal 采样设计）；U-04 定做、U-08 定不做；
 > Phase 3 收窄、Phase 4 砍到最小；§3.5 量级表改为可执行断言
 > 同日续：Phase 3 升级为「可校正性判定」深度层（不砍），新增 Q-09/Q-10、A-11
+> 同日续：开工 Phase 1 第 1–3 步；据实现修正三处规格错误 —— §9.2 的「Z9=spherical」（Noll 下应为 Z11）、
+> §7.1 的「79 field」（实为 76/64）、19 点 mark 密度定义矛盾（新增 U-10）
 > 目标读者：实现者本人（+ 协作助手）
 > 前置调研：SPIE 9778 / 9424（Zernike-Legendre overlay 建模）、SPIE 848200（YieldStar 量测原理）、
 > MDPI 9(1)1（采样策略综述）、JM3 24(2025)024201（EUVlitho）、arXiv 2505.07576（SEM VAD 基准）
@@ -55,6 +57,7 @@
 | U-07 | field-level 用 Legendre 替代 Cartesian 幂基 | 默认 Cartesian（便于与扫描机系数对话）；Legendre 已在 §7.2 预留，切换成本低 | 否 |
 | U-08 | 是否实现带约束的校正优化（QP） | **已决：不做**。拟合不用 QP（§9.3）；§7.10 的校正优化明确划入"未做"，写进 §15.3 | 否 |
 | U-09 | 鲁棒估计默认级别 | 默认 MAD 剔除（L1）；Huber/LAD 作为可配置升级（§7.9） | 否 |
+| U-10 | mark 密度 19 点的定义（§7.1 原表述自相矛盾，无法同时满足「25-6」与「对称」） | 先用 4 / 8 点（已实现）；19 点要么改成 5×5 去掉中心 1 点与 4 个正交邻居（20 点），要么另定 | 否（4/8 点够跑完全部 Phase） |
 
 ---
 
@@ -837,7 +840,8 @@ def field_marks(field: Field, marks_per_field: int) -> list[Mark]:
     """返回场内 mark 位置。marks_per_field ∈ {4, 8, 19}：
        4  → 四角内侧固定偏移（默认距边 3mm）
        8  → 4 角 + 4 边中点
-       19 → 5×5 网格去掉中心 6 个（对称布点）
+       19 → **待定（U-10）**：原表述「5×5 去掉中心 6 个」自相矛盾（25-6=19 既非 90° 也非
+            180° 对称），当前实现显式拒绝该密度，不静默降级
     未知密度抛 ValueError，不得静默降级。"""
 
 def to_polar(x_mm: Arr, y_mm: Arr, wafer_radius_mm: float) -> tuple[Arr, Arr]:
@@ -858,8 +862,10 @@ class Basis(Protocol):
         """返回形状 (n_points, n_terms) 的设计矩阵。"""
 
 class ZernikeBasis:
-    """Noll 索引。Z1=piston(常数), Z2/Z3=tilt, Z4=defocus, Z5/Z6=astigmatism,
-       Z7/Z8=coma, Z9=spherical, ... 归一化为正交且单位方差约定（文档注明所用约定）。"""
+    """Noll 索引。Z1=piston, Z2/Z3=tilt, Z4=defocus, Z5/Z6=astigmatism,
+       Z7/Z8=coma, Z9/Z10=trefoil, Z11=spherical, ...（**Noll；j≥9 起与 ANSI/Fringe 编号错位**）
+       归一化：单位方差 N_n^m = sqrt(2(n+1)/(1+δ_m0))，即 (1/π)∬Z_jZ_k ρdρdθ = δ_jk。
+       max_order 是最大 Noll 索引 j（§9.4），不是最大径向阶数 n。"""
     def __init__(self, max_order: int): ...
     def values(self, rho: Arr, theta: Arr, terms: list[str]) -> Arr: ...
     def radial(self, n: int, m: int, rho: Arr) -> Arr: ...   # R_n^m
@@ -1113,9 +1119,13 @@ eumetria sample-plan -c scenarios/base-300mm.yaml --terms 16 --sequential --budg
 
 ### 9.2 Zernike 约定
 
-- 索引：**Noll**（Z1 = piston, Z4 = defocus, Z9 = spherical）
+- 索引：**Noll**（Z1 = piston, Z4 = defocus, **Z11 = spherical**；Z9 = trefoil）。
+  **不许把 ANSI / Fringe 的「球差 = 9」混进来** —— 两套编号从 j=9 起错位，混用会让高阶像差全部对错项。
+  执行版本：`basis/zernike.py` 模块 docstring 的映射表 + `tests/test_basis.py::test_noll_convention_traps_the_ansi_confusion`
 - 归一化：文档与代码注释必须写明所用归一化（本版采用单位方差约定，`∫ Z_j Z_k dA / π = δ_jk`）
-- 定义域：`rho ∈ [0,1]`。`rho > 1` 的点（edge exclusion 外）必须在采样阶段就被排除，拟合函数对 `rho > 1` 抛 `ValueError`（不允许静默截断）
+- 定义域：`rho ∈ [0,1]`。`rho > 1` 的点（edge exclusion 外）必须在采样阶段就被排除，拟合函数对 `rho > 1` 抛 `ValueError`（不允许静默截断）。
+  这不是纯理论约束：口径 B 的 partial field 会产生**片外 mark**（实测 `rho_max = 1.061`，即 r ≈ 159mm > 150mm），
+  所以「按 edge exclusion 过滤 mark」是 `synth.sampling` 的必需步骤，不做就会在这里炸
 - 实现方式：径向多项式递推 + `noll_to_nm` 映射表；不使用硬编码系数表（避免抄错）
 
 ### 9.3 线性代数与求解器选择
@@ -1385,10 +1395,10 @@ class LithographySimBackend(Protocol):
 
 开工时按此顺序，每步都可独立验证：
 
-- [ ] `geometry.to_polar` / `normalize_field` + 测试
-- [ ] `basis.ZernikeBasis` + 正交性测试 + zernpy 对照
-- [ ] `basis` 设计矩阵 → 最小二乘能恢复已知系数（**第一个真正的里程碑**）
-- [ ] `geometry.build_layout` + `field_marks`（默认场景 79 field）
+- [x] `geometry.to_polar` / `normalize_field` + 测试
+- [x] `basis.ZernikeBasis` + 正交性测试 + zernpy 对照（j=1..36 最大偏差 4.4e-16）
+- [x] `basis` 设计矩阵 → 最小二乘能恢复已知系数（**第一个真正的里程碑**：96 点 / 12 项，相对误差 6.0e-13，条件数 2.3）
+- [x] `geometry.build_layout` + `field_marks`（默认场景 76 field 口径B / 64 口径A；已实现 4 点与 8 点，19 点见 U-10）
 - [ ] `synth.make_fingerprint` 端到端：layout → 指纹
 - [ ] `synth.sampling` + `add_noise` + `apply_tis`
 - [ ] `io.schemas` + 读写（pydantic 校验）
