@@ -10,6 +10,10 @@
 > 同日续：Phase 3 升级为「可校正性判定」深度层（不砍），新增 Q-09/Q-10、A-11
 > 同日续：开工 Phase 1 第 1–3 步；据实现修正三处规格错误 —— §9.2 的「Z9=spherical」（Noll 下应为 Z11）、
 > §7.1 的「79 field」（实为 76/64）、19 点 mark 密度定义矛盾（新增 U-10）
+> 同日续：Phase 1 第 4–6 步（synth）；§7.3 regular 采样说明与 §6.2.4 冲突已修正、make_fingerprint 改收 SamplePoints、
+> §3.4 补 TIS 组合的 σ/√2 结论、§6.2 列数 18→19 与 is_edge 语义按实现修订
+> 同日续：据实测补 §3.1.1「CPE 阶数上限由最差场决定」（默认方案只支持一阶 CPE）+ 三条例律，
+> 新增 U-11（边缘场 mark 是否自适应布置），Q-10 加边缘场三臂对照
 > 目标读者：实现者本人（+ 协作助手）
 > 前置调研：SPIE 9778 / 9424（Zernike-Legendre overlay 建模）、SPIE 848200（YieldStar 量测原理）、
 > MDPI 9(1)1（采样策略综述）、JM3 24(2025)024201（EUVlitho）、arXiv 2505.07576（SEM VAD 基准）
@@ -58,6 +62,7 @@
 | U-08 | 是否实现带约束的校正优化（QP） | **已决：不做**。拟合不用 QP（§9.3）；§7.10 的校正优化明确划入"未做"，写进 §15.3 | 否 |
 | U-09 | 鲁棒估计默认级别 | 默认 MAD 剔除（L1）；Huber/LAD 作为可配置升级（§7.9） | 否 |
 | U-10 | mark 密度 19 点的定义（§7.1 原表述自相矛盾，无法同时满足「25-6」与「对称」） | 先用 4 / 8 点（已实现）；19 点要么改成 5×5 去掉中心 1 点与 4 个正交邻居（20 点），要么另定 | 否（4/8 点够跑完全部 Phase） |
+| U-11 | 边缘场的 mark 是否自适应布置（往可用区内收），使每场都凑够 CPE 所需点数 | 先按固定 4/8 点布局；若 Q-10 显示边缘场是瓶颈，再把 mark 位置做成场景可配 | 否（阻塞 CPE 的最优解，不阻塞一阶 CPE） |
 
 ---
 
@@ -132,7 +137,7 @@ scenario.yaml
 | Q-07 | TIS 未校准会给 overlay 分解带来什么偏差 | 有/无 TIS 校准对比 |
 | Q-08 | 采样布局离最优有多远：实测系数方差 vs Cramér-Rao 下界 | 对给定布局算 FIM = ΦᵀΦ/σ²，把 σ²·(ΦᵀΦ)⁻¹ 的理论下界与蒙特卡洛实测方差对比；再做 D-optimal 贪心布局作对照，报增益 |
 | Q-09 | 可校正性判定的两类错误：漏校（真 CPE 被塞进 residual）vs 过校（噪声被当成 CPE） | 对每个候选项做系数显著性检验（t 检验 / F 检验），扫描显著性阈值 α，画漏校-过校权衡曲线；真值已知，两类错误都能直接计数 |
-| Q-10 | 可校正集与 CPE 阶数怎么权衡：残差降多少、过拟合付多少 | 扫描扫描机支持项数（8/12/16/30）与 CPE 每场阶数，记录 residual RMS、拟合残差 vs CV 残差的过拟合交叉点、`cpe_ratio`（参数数/点数）；产出代价曲线 |
+| Q-10 | 可校正集与 CPE 阶数怎么权衡：残差降多少、过拟合付多少 | 扫描扫描机支持项数（8/12/16/30）与 CPE 每场阶数，记录 residual RMS、拟合残差 vs CV 残差的过拟合交叉点、`cpe_ratio`（参数数/点数）；产出代价曲线。**另加三臂对照**：① 含边缘场、全局降到一阶 ② 排除 4 个边缘场、保二阶 ③ 逐场自适应降阶（预期最差，作反面对照）—— 各报 residual RMS + CV 残差 + 跨场系数变异，用来验证 §3.1.1「不许逐场降阶」这条纪律 |
 
 ### 1.5 本期不做
 
@@ -276,6 +281,35 @@ dy_field = 同理
 3. 因此 CPE 控制环无法逐 lot 更新，只能按工艺稳定性低频更新
 
 **对本项目的直接影响：** 这正是 §9.3 条件数/可辨识性问题的最坏情形 —— 参数数逼近点数时 LS 解失稳。所以 `fit_result.json` 的 `identifiability` 必须包含 **CPE 参数/点数比**（实现见 §7.5）。
+
+**CPE 的阶数上限由「最差的那个场」决定**（实测数据，不是理论顾虑）。CPE 是逐场一套系数，
+所以每个场各自的点数必须 ≥ 该场参数数 —— 平均点数够没有用：
+
+| 场内 CPE 阶数 | 项数 | 未知量（x/y 两套） | 满点场（8 mark） | 边缘场（5 mark） |
+|---|---|---|---|---|
+| 一阶 `(0,0)(1,0)(0,1)` | 3 | 6 | 可辨识，设计矩阵条件数 1.50 | 可辨识，条件数 2.95 |
+| 二阶 `+(2,0)(1,1)(0,2)` | 6 | 12 | 可辨识，条件数 6.61 | **降秩：rank 5 < 6，不可辨识** |
+
+实测（seed 20261003，默认 25 场采样 / 8 mark）：21 个场满点、4 个边缘场只剩 5 mark
+（field 6 / 15 / 60 / 69）。后果：**默认采样方案下二阶 CPE 直接不可辨识，CPE 上限是一阶。**
+
+三条纪律：
+
+1. **不许逐场自适应降阶。** CPE 的判据是跨场系数变异（Q-09/Q-10），各场阶数不同则系数
+   不可比，整个可校正性判定作废；而且扫描机施加的是**同一套**模型，物理上不存在
+   「第 6 场用二阶、第 60 场用一阶」这种校正。降阶还有个隐藏代价：降阶场的残差会被系统性
+   放大，而残差正是 residual（不可校正）的估计 —— 等于把自己的降阶误读成「这片不可校正」。
+2. **阶数上限 = min over 各场「可辨识的最高阶」**，全局统一档位。
+3. **要在采样层解决，不是在拟合层**：给边缘场自适应布置 mark（往可用区内收，见 U-11），
+   或者把边缘场排除出 CPE 拟合、并在 `identifiability.warnings` 里显式列出（A-06：不静默给错结果）。
+
+**`np.linalg.lstsq` 在欠定系统上不报错** —— 5 点对 6 项时它静默返回最小范数解，
+一个物理上无意义的「解」。所以 §7.4 的 `InsufficientPointsError` 必须由**显式的
+`n_points ≥ n_params` 与秩检查**触发，不能依赖求解器抛异常。
+
+**顺带一个数字（不是边缘场特有）**：8 点 scribe-line 布局的 mark 落在 ξ = ±0.769、η = ±0.818
+处，只覆盖 field 归一化面积的 0.63×0.63 —— 满点场也在外圈 23%/18% 的区域外推。
+所以二阶的条件数 6.61 是这个布局的**地板**，换采样布局才可能更低。
 
 ### 3.2 Focus
 
@@ -1210,7 +1244,7 @@ eumetria sample-plan -c scenarios/base-300mm.yaml --terms 16 --sequential --budg
 | sampling | 请求 field 数 > 可用数 | `ValueError`，报出可用上限 |
 | 指纹生成 | term 名非法 / max_order 不足 | `SchemaValidationError`（退出码 1） |
 | 噪声/TIS | sigma < 0 | `ValueError` |
-| fit | 点数 < 参数数 | `InsufficientPointsError`（退出码 2），信息含"需要 ≥ N 点" |
+| fit | 点数 < 参数数，或设计矩阵降秩 | `InsufficientPointsError`（退出码 2），信息含"需要 ≥ N 点"。**必须显式检查，不能依赖 lstsq —— 欠定系统上 lstsq 不报错，会静默返回最小范数解** |
 | fit | 设计矩阵秩亏 | 不抛异常；置 `rank_deficient=true` + 警告，返回最小范数解 |
 | fit | 条件数过大 | 同上，给警告 |
 | crossval | 折内点数不足 | 降折数并警告（最低 2 折），2 折仍不足则跳过 CV 置 null |
@@ -1424,7 +1458,7 @@ class LithographySimBackend(Protocol):
 - [x] `synth.sample_fields` / `sample_points` + `add_noise` + `apply_tis`
       （默认场景复现 25 field / 188 点 / 4 个边缘场各剩 5 mark）
 - [ ] `io.schemas` + 读写（pydantic 校验）
-- [ ] `fit.fit_field` 两级拟合 + `InsufficientPointsError`
+- [ ] `fit.fit_field` 两级拟合 + `InsufficientPointsError`（显式 `n_points ≥ n_params` + 秩检查）
 - [ ] `metrics.coefficient_recovery` + `residual_rms`
 - [ ] `cli synth|fit|score` + 集成测试（A-01..A-05）
 - [ ] `report` 基础图
@@ -1434,7 +1468,7 @@ class LithographySimBackend(Protocol):
 - [ ] `inference.crlb` / `coefficient_ci` + A-09 覆盖率测试（500 次蒙特卡洛）
 - [ ] `design.d_optimal` / `sequential` + `sample-plan` 命令 + Q-08 结论（实测方差 vs CRLB）
 - [ ] `inverse`（Bossung，二义性显式输出）+ Q-06
-- [ ] `decompose`（correctable / CPE / residual 三分 + 线性 6 参换算）
+- [ ] `decompose`（correctable / CPE / residual 三分 + 线性 6 参换算 + 每场秩/条件数报告 + CPE 阶数上限判定，见 §3.1.1）
 - [ ] `significance`（每项 p 值/CI + 漏校-过校权衡曲线）+ Q-09
 - [ ] `budget`（扫描机项数 × CPE 阶数扫描）+ Q-10 + `overfitting_crossover.png`
 - [ ] `tis`（校准残余误差传播）+ Q-07
