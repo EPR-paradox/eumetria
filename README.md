@@ -40,8 +40,10 @@ uv pip install --python .venv/bin/python -i https://pypi.tuna.tsinghua.edu.cn/si
     numpy scipy pyyaml pydantic matplotlib pytest zernpy
 uv pip install --python .venv/bin/python -e .     # 装出 eumetria 命令入口
 
-# 跑整条流水线（synth → fit → score），产物在 out/base/
-.venv/bin/eumetria run -c scenarios/base-300mm.yaml -o out/base
+# 跑整条流水线（synth → fit → score → report），产物在 out/base/
+.venv/bin/python main.py                       # 零参数，PyCharm 里直接点绿三角
+.venv/bin/eumetria run -c scenarios/base-300mm.yaml -o out/base   # 等价的命令行形式
+.venv/bin/python -c "from eumetria.pipeline import run_all; run_all('scenarios/base-300mm.yaml','out/base')"
 
 # 测试
 .venv/bin/python -m pytest

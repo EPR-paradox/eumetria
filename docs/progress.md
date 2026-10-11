@@ -15,6 +15,20 @@
 # → measurements.csv / truth.json / fit_result.json / metrics.json / report/{4 图 + report.html}
 ```
 
+## 最近一次改动（2026-10-11 收尾）
+
+新增零参数入口 `main.py`，并把流水线编排从 `cli.py` 提到 `eumetria/pipeline.py`：
+
+| 入口 | 命令 | 说明 |
+|---|---|---|
+| 零参数 | `python main.py` | PyCharm 绿三角直接跑；默认场景 + `out/base` |
+| 命令行 | `eumetria run -c ... -o ...` | 完整 CLI，五个子命令 |
+| 库调用 | `pipeline.run_all(config, out_dir)` | notebook / 测试用；不经过 argparse |
+
+分层的理由：编排原本埋在 `cli._cmd_run` 里，于是任何新前端都得先构造一个
+`argparse.Namespace` 才能跑流水线。现在 `cli.py` 只剩参数解析 + 退出码映射，
+`main.py` 只剩默认值与人类可读输出。**改流水线顺序只需改一处。**
+
 ## 下一步（明天从这里接）
 
 **Phase 2 结论层** —— 这是项目第一次产出"我发现了什么"，而不是"我实现了什么"：

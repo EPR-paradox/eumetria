@@ -57,9 +57,9 @@ def test_html_shows_the_verdicts_and_notes(artifacts):
 def test_fitted_values_match_the_fit_result(artifacts):
     """报告里的"拟合场"必须与 fit 写出的模型一致（否则残差图就是假的）。"""
     scenario = load_scenario(SCENARIO_PATH)
-    from eumetria.cli import _measurements  # 内部工具，测试里直接用
+    from eumetria.pipeline import read_measurements
 
-    ms = _measurements(scenario, artifacts / "measurements.csv")
+    ms = read_measurements(scenario, artifacts / "measurements.csv")
     fit = json.loads((artifacts / "fit_result.json").read_text(encoding="utf-8"))
     dx_fit, dy_fit = fitted_values(fit, ms)
     resid_x = ms.dx_nm - dx_fit

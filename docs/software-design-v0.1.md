@@ -547,6 +547,7 @@ true_hat = (m_0 - m_180) / 2
 ```
 eumetria/
 ├── README.md                      # 项目说明 + Q-01..Q-07 的结论摘要（这是门面）
+├── main.py                        # 零参数入口：python main.py 跑完整条流水线
 ├── pyproject.toml                 # 构建 + 依赖 + CLI entry point
 ├── .gitignore
 ├── docs/
@@ -574,6 +575,7 @@ eumetria/
 │   ├── metrics/{__init__,recovery,budget}.py
 │   ├── report/{__init__,plots,html}.py
 │   ├── io/{__init__,schemas,readers,writers}.py
+│   ├── pipeline.py                # 编排：synth→fit→score→report（三个前端共用这一份）
 │   └── cli.py
 ├── tests/
 │   ├── unit/                      # 基函数、几何、数值
@@ -1207,6 +1209,14 @@ eumetria sample-plan -c scenarios/base-300mm.yaml --terms 16 --points 25
 eumetria sample-plan -c scenarios/base-300mm.yaml --terms 16 --sequential --budget 40
                  -o out/plan_seq                             # U-04 序贯加点（按 FIM 信息增益）
 ```
+
+前端分三层，**编排只有一份**（都在 `pipeline.py`），互不复制串联逻辑：
+
+| 入口 | 用途 | 做什么 |
+|---|---|---|
+| `python main.py` | 零参数跑全流程；PyCharm 绿三角 / 新克隆后先试这个 | 默认值 + 人类可读输出 |
+| `eumetria <子命令>` | 完整 CLI，可单独跑四步中任一步 | 参数解析 + 退出码映射 |
+| `pipeline.run_all(...)` | notebook / 脚本 / 集成测试 | 直接调 |
 
 约定：
 - 退出码：0 成功；1 输入/schema 错误；2 计算错误（如点数不足）；3 内部错误

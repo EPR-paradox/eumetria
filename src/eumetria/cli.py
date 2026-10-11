@@ -1,10 +1,15 @@
 """命令行入口（§8）。
 
-    eumetria synth -c scenarios/base-300mm.yaml -o out/base
-    eumetria fit   -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
-    eumetria score --fit out/base/fit_result.json --truth out/base/truth.json \
-                   -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
-    eumetria run   -c scenarios/base-300mm.yaml -o out/base          # 上面四步串联
+    eumetria synth  -c scenarios/base-300mm.yaml -o out/base
+    eumetria fit    -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
+    eumetria score  --fit out/base/fit_result.json --truth out/base/truth.json \\
+                    -i out/base/measurements.csv -c scenarios/base-300mm.yaml -o out/base
+    eumetria report -i out/base -c scenarios/base-300mm.yaml -o out/base/report
+    eumetria run    -c scenarios/base-300mm.yaml -o out/base          # 上面四步串联
+
+本层只做三件事：解析参数、调 `pipeline`、把异常映射成退出码。
+**编排与计算都不在这里** —— 想让别的入口（main.py / notebook / 测试）复用同一条流水线，
+调 `eumetria.pipeline.run_all()`，不要构造 argparse.Namespace 再喂进来。
 
 约定：
 - 退出码：0 成功；1 输入/schema 错误；2 计算错误（点数不足、降秩）；3 内部错误
@@ -12,10 +17,9 @@
 - `--json` 把机器可读摘要打到 **stdout**；日志一律走 **stderr**（stdout 不许被污染）
 - 生成物写进 `-o` 目录（`out/` 已在 .gitignore）
 
-与详设 §8 的一处修订：`score` 增加了 `-i/--input` 与 `-c/--config`。
-原因是 A-04（拟合残差与真值残差之差 < 0.01nm）**必须重建真值场**才能判定，
-而它需要 measurements（点坐标）与 scenario（读 CSV 时的硅片半径，§6.2.5 强制要求）。
-原契约里 score 只给 fit/truth 两个路径，A-04 无从计算。
+与详设 §8 的两处修订：`score` 与 `report` 增加了 `-c/--config`。
+原因是 A-04（拟合残差与真值残差之差 < 0.01nm）**必须重建真值场**才能判定，而重建与读
+CSV 都需要场景参数（硅片半径，§6.2.5 强制要求）。原契约里只给路径不给场景，A-04 无从计算。
 """
 
 from __future__ import annotations
@@ -23,11 +27,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from typing import Any
 
-import numpy as np
-
+from . import pipeline
 from .errors import (
     EumetriaError,
     InsufficientPointsError,
@@ -35,12 +37,6 @@ from .errors import (
     SchemaValidationError,
     SchemaVersionError,
 )
-from .fit import FitConfig, fit_field, write_fit_result
-from .io import load_measurements, load_scenario, load_truth
-from .io.writers import write_measurements, write_truth
-from .io.schemas import Scenario
-from .metrics import compare
-from .synth import generate
 
 EXIT_OK = 0
 EXIT_INPUT = 1
@@ -60,162 +56,33 @@ def _emit(summary: dict[str, Any], as_json: bool) -> None:
             _log(f"{key}: {value}")
 
 
-def _scenario(args: argparse.Namespace) -> Scenario:
-    scenario = load_scenario(args.config)
-    seed = getattr(args, "seed", None)
-    if seed is not None:
-        scenario = scenario.model_copy(update={"seed": int(seed)})
-    return scenario
-
-
-def _measurements(scenario: Scenario, path: Path):
-    return load_measurements(
-        path,
-        wafer_radius_mm=scenario.wafer_radius_mm,
-        field_width_mm=scenario.field.width_mm,
-        field_height_mm=scenario.field.height_mm,
-    )
-
-
-def _fit_config(scenario: Scenario, args: argparse.Namespace) -> FitConfig:
-    return FitConfig(
-        basis=scenario.fingerprint.basis,
-        max_order=scenario.fingerprint.max_order,
-        field_order=scenario.fingerprint.field_order,
-    )
-
-
 # ------------------------------------------------------------------ 子命令
 
 
 def _cmd_synth(args: argparse.Namespace) -> dict[str, Any]:
-    scenario = _scenario(args)
-    run = generate(scenario)
-    out = Path(args.output)
-    ms_path = write_measurements(out / "measurements.csv", run.measurements)
-    truth_path = write_truth(out / "truth.json", run.truth)
-    return {
-        "command": "synth",
-        "seed": scenario.seed,
-        "n_points": len(run.measurements),
-        "n_fields": int(len(set(int(v) for v in run.measurements.field_id))),
-        "measurements": str(ms_path),
-        "truth": str(truth_path),
-        "tis_estimate_nm": [round(v, 4) for v in run.tis_estimate_nm],
-    }
+    return pipeline.synth(pipeline.scenario_with_seed(args.config, args.seed), args.output)
 
 
 def _cmd_fit(args: argparse.Namespace) -> dict[str, Any]:
-    scenario = _scenario(args)
-    ms = _measurements(scenario, Path(args.input))
-    result = fit_field(ms, _fit_config(scenario, args))
-    path = write_fit_result(Path(args.output) / "fit_result.json", result)
-    return {
-        "command": "fit",
-        "n_points": result.n_points,
-        "n_params": result.n_params,
-        "condition_number": round(result.condition_number, 4),
-        "residual_rms_nm": round(result.residual_rms_nm, 6),
-        "cpe_order_ceiling": result.identifiability.cpe_order_ceiling,
-        "warnings": result.identifiability.warnings,
-        "fit_result": str(path),
-    }
+    scenario = pipeline.scenario_with_seed(args.config, args.seed)
+    return pipeline.fit(scenario, args.input, args.output)
 
 
 def _cmd_score(args: argparse.Namespace) -> dict[str, Any]:
-    scenario = _scenario(args)
-    ms = _measurements(scenario, Path(args.input))
-    truth = load_truth(args.truth)
-    fit_payload = json.loads(Path(args.fit).read_text(encoding="utf-8"))
-    metrics = compare(fit_payload, truth, ms)
-    out = Path(args.output)
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "metrics.json"
-    path.write_text(
-        json.dumps(metrics.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    summary = metrics.to_dict()
-    summary["command"] = "score"
-    summary["metrics"] = str(path)
-    return summary
+    scenario = pipeline.scenario_with_seed(args.config, args.seed)
+    return pipeline.score(scenario, args.input, args.fit, args.truth, args.output)
 
 
 def _cmd_report(args: argparse.Namespace) -> dict[str, Any]:
-    """画基础图 + 生成单文件 HTML。
-
-    相对 §8 的修订：增加 `-c/--config`（与 `score` 同一个原因 —— 读 measurements 需要
-    硅片半径，§6.2.5 强制）；`-i` 是**目录**，图与两个 JSON 都从里面按固定文件名取。
-    """
-    from .report import fitted_values, plot_residual_map, plot_wafer_map, render_html
-
-    scenario = _scenario(args)
-    in_dir = Path(args.input)
-    ms = _measurements(scenario, in_dir / "measurements.csv")
-    fit_payload = json.loads((in_dir / "fit_result.json").read_text(encoding="utf-8"))
-    metrics_path = in_dir / "metrics.json"
-    metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else {}
-
-    out = Path(args.output)
-    dx_fit, dy_fit = fitted_values(fit_payload, ms)
-    resid_x = ms.dx_nm - dx_fit
-    resid_y = ms.dy_nm - dy_fit
-    r = scenario.wafer_radius_mm
-    e = scenario.wafer.edge_exclusion_mm
-
-    figures = [
-        plot_wafer_map(
-            ms.dx_nm, ms.x_mm, ms.y_mm, out_path=out / "measured_dx.png",
-            title="实测 dx 场", label="dx (nm)", radius_mm=r, edge_exclusion_mm=e,
-        ),
-        plot_wafer_map(
-            dx_fit, ms.x_mm, ms.y_mm, out_path=out / "fitted_dx.png",
-            title="拟合模型 dx 场（wafer + 场内）", label="dx (nm)",
-            radius_mm=r, edge_exclusion_mm=e,
-        ),
-        plot_wafer_map(
-            np.hypot(ms.dx_nm, ms.dy_nm), ms.x_mm, ms.y_mm,
-            out_path=out / "overlay_quiver.png", title="overlay 矢量（长度 = 幅值）",
-            radius_mm=r, edge_exclusion_mm=e, kind="quiver", dx=ms.dx_nm, dy=ms.dy_nm,
-        ),
-        plot_residual_map(
-            resid_x, resid_y, ms.x_mm, ms.y_mm,
-            out_path=out / "residual_map.png", radius_mm=r, edge_exclusion_mm=e,
-        ),
-    ]
-    html = render_html(figures, metrics, out / "report.html", fit=fit_payload)
-    return {
-        "command": "report",
-        "figures": [str(p) for p in figures],
-        "html": str(html),
-        "residual_rms_nm": round(float(np.sqrt(np.mean(resid_x**2))), 6),
-    }
+    # 注意：这里**不**传 seed —— report 只读磁盘上的产物，seed 影响不到任何东西，
+    # 所以 report 子命令也就没有 --seed。别为了"参数整齐"给它加一个空转的开关。
+    scenario = pipeline.scenario_with_seed(args.config)
+    return pipeline.report(scenario, args.input, args.output)
 
 
 def _cmd_run(args: argparse.Namespace) -> dict[str, Any]:
-    """synth → fit → score 串联（report 属 Phase 4）。
-
-    四步共用同一个 `-o` 目录，所以 fit/score 需要的 `-i/--fit/--truth` 由 `run` 自己
-    按固定文件名推出来 —— 不要求用户再写一遍，也不让两个信息源有机会不一致。
-    """
-    out = Path(args.output)
-    step = argparse.Namespace(**vars(args))
-    step.input = str(out / "measurements.csv")
-    step.fit = str(out / "fit_result.json")
-    step.truth = str(out / "truth.json")
-    synth = _cmd_synth(step)
-    fit = _cmd_fit(step)
-    score = _cmd_score(step)
-    report_args = argparse.Namespace(**vars(args))
-    report_args.input = str(out)
-    report_args.output = str(out / "report")
-    report = _cmd_report(report_args)
-    return {
-        "command": "run",
-        "synth": synth,
-        "fit": fit,
-        "score": score,
-        "report": report,
-    }
+    """四步串联。中间产物路径由 `-o` 目录推出，不让两个信息源有机会不一致。"""
+    return pipeline.run_all(args.config, args.output, seed=args.seed)
 
 
 # ------------------------------------------------------------------ 解析
