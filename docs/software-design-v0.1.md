@@ -553,7 +553,8 @@ eumetria/
 │   ├── software-design-v0.1.md    # 本文档
 │   ├── physics-notes.md           # 公式推导与文献摘录（实现依据）
 │   ├── experiments.md             # Q-01..Q-10 的实验记录与结论（**数字的唯一出处**）
-│   └── design-faq.md              # 设计问答：为什么这么选、证据在哪、边界在哪
+│   ├── design-faq.md              # 设计问答：为什么这么选、证据在哪、边界在哪
+│   └── progress.md                # 进度：现在到哪 / 明天从哪接 / 什么还悬着
 ├── experiments/                   # 可复现的实验脚本（experiments.md 里的数字由它们产出）
 ├── scenarios/
 │   ├── base-300mm.yaml            # 默认场景
@@ -1508,28 +1509,8 @@ class LithographySimBackend(Protocol):
 
 ## 附：实现顺序检查表
 
-**进度（2026-10-11）：Phase 1 完成，156 个测试全绿，8 个提交未推送。**
-
-端到端验证 —— `.venv/bin/eumetria run -c scenarios/base-300mm.yaml -o out/base`，退出码 0：
-
-| 验收 | 要求 | 结果 |
-|---|---|---|
-| A-01 | 一条命令生成 measurements.csv + truth.json | 通过（188 行 / 19 列） |
-| A-02 | 无噪声 + 点数 ≥ 8× 参数 → 全部系数 < 1% | **不适用**（数据带噪；判定已按 `noise_sigma_nm==0` 加前提） |
-| A-03 | 前 6 阶主要项 < 10% | 通过（wafer 最大相对误差 0.867%） |
-| A-04 | 拟合残差 RMS 与真值差 < 0.01nm | 通过（0.06457 vs 0.06925，差 0.00468） |
-| A-05 | 同 seed bit 级一致 | 通过（文件字节相同） |
-
-默认场景实测值：188 点 / 17 参数 / 条件数 7.60 / 残差 RMS 0.0646nm ≈ σ/√2 / CPE 阶数上限 1；
-产物含 `report/`（4 张图 + report.html）。
-
-**下一步从 Phase 2 结论层接**：`model_select`（AIC 前向逐步）+ `crossval`（按 wafer 分组）
-+ `sweep` 命令 + `sampling_budget_curve`，对应 Q-01/02/03/05。
-`docs/experiments.md` 的索引表里已列出每条 Q 的脚本位置与状态。
-
-**已知未决项**：U-10（19 点 mark 密度定义矛盾）、U-11（边缘场 mark 是否自适应布置）；
-**Phase 3 待量化的第一批数据点**：场内二阶项 `(2,0)` 在 TMU 0.1nm 下相对误差 12.5%
-（全场最差），属 Q-04。
+**进度、验收状态与下一步都在 [`docs/progress.md`](progress.md)** —— 本文档只放规格，
+不放进度；数字的出处是 [`docs/experiments.md`](experiments.md)。
 
 开工时按此顺序，每步都可独立验证：
 

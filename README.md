@@ -24,6 +24,7 @@
 148 个测试全绿。默认场景实测：188 点 / 17 参数 / 条件数 7.60 / 残差 RMS 0.0646nm；
 A-03（前 6 阶主项 < 10%）通过，A-04（残差一致性 < 0.01nm）通过。
 
+- 进度：[`docs/progress.md`](docs/progress.md) —— **现在到哪 / 明天从哪接 / 什么还悬着**
 - 详细设计：[`docs/software-design-v0.1.md`](docs/software-design-v0.1.md)（Draft v0.2）
   - 验收条件 A-01..A-11、技术问题 Q-01..Q-10、交付切片 Phase 1..4、实现顺序检查表
 - 实验记录：[`docs/experiments.md`](docs/experiments.md) —— **数字的唯一出处**，
