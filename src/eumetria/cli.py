@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from .errors import (
     EumetriaError,
     InsufficientPointsError,
@@ -138,6 +140,57 @@ def _cmd_score(args: argparse.Namespace) -> dict[str, Any]:
     return summary
 
 
+def _cmd_report(args: argparse.Namespace) -> dict[str, Any]:
+    """画基础图 + 生成单文件 HTML。
+
+    相对 §8 的修订：增加 `-c/--config`（与 `score` 同一个原因 —— 读 measurements 需要
+    硅片半径，§6.2.5 强制）；`-i` 是**目录**，图与两个 JSON 都从里面按固定文件名取。
+    """
+    from .report import fitted_values, plot_residual_map, plot_wafer_map, render_html
+
+    scenario = _scenario(args)
+    in_dir = Path(args.input)
+    ms = _measurements(scenario, in_dir / "measurements.csv")
+    fit_payload = json.loads((in_dir / "fit_result.json").read_text(encoding="utf-8"))
+    metrics_path = in_dir / "metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else {}
+
+    out = Path(args.output)
+    dx_fit, dy_fit = fitted_values(fit_payload, ms)
+    resid_x = ms.dx_nm - dx_fit
+    resid_y = ms.dy_nm - dy_fit
+    r = scenario.wafer_radius_mm
+    e = scenario.wafer.edge_exclusion_mm
+
+    figures = [
+        plot_wafer_map(
+            ms.dx_nm, ms.x_mm, ms.y_mm, out_path=out / "measured_dx.png",
+            title="实测 dx 场", label="dx (nm)", radius_mm=r, edge_exclusion_mm=e,
+        ),
+        plot_wafer_map(
+            dx_fit, ms.x_mm, ms.y_mm, out_path=out / "fitted_dx.png",
+            title="拟合模型 dx 场（wafer + 场内）", label="dx (nm)",
+            radius_mm=r, edge_exclusion_mm=e,
+        ),
+        plot_wafer_map(
+            np.hypot(ms.dx_nm, ms.dy_nm), ms.x_mm, ms.y_mm,
+            out_path=out / "overlay_quiver.png", title="overlay 矢量（长度 = 幅值）",
+            radius_mm=r, edge_exclusion_mm=e, kind="quiver", dx=ms.dx_nm, dy=ms.dy_nm,
+        ),
+        plot_residual_map(
+            resid_x, resid_y, ms.x_mm, ms.y_mm,
+            out_path=out / "residual_map.png", radius_mm=r, edge_exclusion_mm=e,
+        ),
+    ]
+    html = render_html(figures, metrics, out / "report.html", fit=fit_payload)
+    return {
+        "command": "report",
+        "figures": [str(p) for p in figures],
+        "html": str(html),
+        "residual_rms_nm": round(float(np.sqrt(np.mean(resid_x**2))), 6),
+    }
+
+
 def _cmd_run(args: argparse.Namespace) -> dict[str, Any]:
     """synth → fit → score 串联（report 属 Phase 4）。
 
@@ -152,11 +205,16 @@ def _cmd_run(args: argparse.Namespace) -> dict[str, Any]:
     synth = _cmd_synth(step)
     fit = _cmd_fit(step)
     score = _cmd_score(step)
+    report_args = argparse.Namespace(**vars(args))
+    report_args.input = str(out)
+    report_args.output = str(out / "report")
+    report = _cmd_report(report_args)
     return {
         "command": "run",
         "synth": synth,
         "fit": fit,
         "score": score,
+        "report": report,
     }
 
 
@@ -190,7 +248,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_score.add_argument("--seed", type=int, default=None)
     p_score.set_defaults(func=_cmd_score)
 
-    p_run = sub.add_parser("run", help="synth → fit → score")
+    p_report = sub.add_parser("report", help="基础图 + 单文件 HTML")
+    p_report.add_argument("-i", "--input", required=True, help="产物目录（含 measurements/fit_result/metrics）")
+    p_report.add_argument("-c", "--config", required=True)
+    p_report.add_argument("-o", "--output", required=True)
+    p_report.set_defaults(func=_cmd_report)
+
+    p_run = sub.add_parser("run", help="synth → fit → score → report")
     p_run.add_argument("-c", "--config", required=True)
     p_run.add_argument("-o", "--output", required=True)
     p_run.add_argument("--seed", type=int, default=None)

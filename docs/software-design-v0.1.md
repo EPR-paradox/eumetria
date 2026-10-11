@@ -4,6 +4,7 @@
 > 文档状态：Draft v0.2
 > 创建日期：2026-10-03
 > 修订日期：2026-10-11
+> 目标读者：实现者本人（+ 协作助手）
 > v0.1 → v0.2 变更：主线定为 overlay（D-07）；不引入 C++，难度轴改为统计推断（D-08）；
 > 新增 Q-08、A-09/A-10、Phase 2.5（FIM/CRB + D-optimal 采样设计）；U-04 定做、U-08 定不做；
 > Phase 3 收窄、Phase 4 砍到最小；§3.5 量级表改为可执行断言
@@ -17,7 +18,8 @@
 > 同日续：**框架内决策反转 D-09** —— 实测推翻「两级顺序解」（顺序解偏 0.032–0.358nm，联合解 0.0000nm），
 > 同时查出 Zernike Z1 与场内 Cartesian (0,0) 混叠（条件数 3.3e15 → 去掉场内常数项后 7.6）；
 > 新增 docs/experiments.md（实验记录）与 docs/design-faq.md（设计问答），experiments/ 放可复现脚本
-> 目标读者：实现者本人（+ 协作助手）
+> 同日收尾：**Phase 1 第 1–10 步全部完成**（geometry → basis → synth → io → fit → metrics → cli → report），
+> 验收 A-01/A-03/A-04/A-05 通过、A-02 判为「不适用（带噪）」；156 个测试全绿；下一步进 Phase 2 结论层
 > 前置调研：SPIE 9778 / 9424（Zernike-Legendre overlay 建模）、SPIE 848200（YieldStar 量测原理）、
 > MDPI 9(1)1（采样策略综述）、JM3 24(2025)024201（EUVlitho）、arXiv 2505.07576（SEM VAD 基准）
 
@@ -1506,6 +1508,29 @@ class LithographySimBackend(Protocol):
 
 ## 附：实现顺序检查表
 
+**进度（2026-10-11）：Phase 1 完成，156 个测试全绿，8 个提交未推送。**
+
+端到端验证 —— `.venv/bin/eumetria run -c scenarios/base-300mm.yaml -o out/base`，退出码 0：
+
+| 验收 | 要求 | 结果 |
+|---|---|---|
+| A-01 | 一条命令生成 measurements.csv + truth.json | 通过（188 行 / 19 列） |
+| A-02 | 无噪声 + 点数 ≥ 8× 参数 → 全部系数 < 1% | **不适用**（数据带噪；判定已按 `noise_sigma_nm==0` 加前提） |
+| A-03 | 前 6 阶主要项 < 10% | 通过（wafer 最大相对误差 0.867%） |
+| A-04 | 拟合残差 RMS 与真值差 < 0.01nm | 通过（0.06457 vs 0.06925，差 0.00468） |
+| A-05 | 同 seed bit 级一致 | 通过（文件字节相同） |
+
+默认场景实测值：188 点 / 17 参数 / 条件数 7.60 / 残差 RMS 0.0646nm ≈ σ/√2 / CPE 阶数上限 1；
+产物含 `report/`（4 张图 + report.html）。
+
+**下一步从 Phase 2 结论层接**：`model_select`（AIC 前向逐步）+ `crossval`（按 wafer 分组）
++ `sweep` 命令 + `sampling_budget_curve`，对应 Q-01/02/03/05。
+`docs/experiments.md` 的索引表里已列出每条 Q 的脚本位置与状态。
+
+**已知未决项**：U-10（19 点 mark 密度定义矛盾）、U-11（边缘场 mark 是否自适应布置）；
+**Phase 3 待量化的第一批数据点**：场内二阶项 `(2,0)` 在 TMU 0.1nm 下相对误差 12.5%
+（全场最差），属 Q-04。
+
 开工时按此顺序，每步都可独立验证：
 
 - [x] `geometry.to_polar` / `normalize_field` + 测试
@@ -1523,8 +1548,9 @@ class LithographySimBackend(Protocol):
       `truth.noise_sigma_nm == 0`，否则带噪数据可能被 1% 阈值蒙过）
 - [x] `cli synth|fit|score|run` + 退出码映射 + `--json`（stdout 干净 / 日志走 stderr）
       + 集成测试（A-01..A-05 逐条断言）
-- [ ] `report` 基础图
-- [ ] → Phase 1 完成，写 README
+- [x] `report` 基础图（4 张：实测 dx 场 / 拟合 dx 场 / overlay 矢量 / 双通道残差图
+      + 自包含单文件 HTML，图以 base64 内嵌；中文字体按可用性自动挑，避免画成豆腐块）
+- [x] → **Phase 1 完成，README 已写**
 - [ ] `model_select` + `crossval` + `sweep` + `sampling_budget_curve`（Q-01/02/03/05）
 - [ ] `robust`(MAD 剔除) + `fit_cascade` 正交性等价性实验（Q-01 的数值证据）
 - [ ] `inference.crlb` / `coefficient_ci` + A-09 覆盖率测试（500 次蒙特卡洛）
